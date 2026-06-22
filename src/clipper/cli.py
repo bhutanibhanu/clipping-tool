@@ -16,8 +16,19 @@ import typer
 from clipper import __version__
 from clipper.catalog import SourceFileNotFoundError, create_creator, register_source
 from clipper.config import get_settings
-from clipper.db.models import JobStatus
+from clipper.db.models import Clip, JobStatus
 from clipper.db.session import session_scope
+from clipper.detect.base import DetectorConfigError
+from clipper.detect.service import (
+    PROVIDER_CLAUDE,
+    PROVIDER_MOCK,
+    TranscriptMissingError,
+    detect_for_source,
+    make_detector,
+)
+from clipper.detect.service import (
+    SourceNotFoundError as DetectSourceNotFoundError,
+)
 from clipper.media.ffmpeg import ffmpeg_available
 from clipper.permissions.service import (
     AuthorizationFileNotFoundError,
@@ -153,6 +164,65 @@ def ingest(
 
     typer.echo(f"Ingested source {source_id} (duration={duration}s)")
     typer.echo(f"  transcript: {transcript_path}")
+
+
+def _mmss(seconds: float) -> str:
+    """Render seconds as ``mm:ss`` for the detect summary."""
+    total = int(seconds)
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+@app.command()
+def detect(
+    source_id: int = typer.Argument(..., help="Id of the ingested source to detect clips in."),
+    provider: str = typer.Option(
+        PROVIDER_CLAUDE,
+        "--provider",
+        help="Detection provider: claude, openai-compat, or mock.",
+    ),
+    mock: bool = typer.Option(
+        False, "--mock", help="Shortcut for --provider mock (offline, no API key)."
+    ),
+    max_clips: int | None = typer.Option(
+        None,
+        "--max-clips",
+        help="Max candidate clips to surface (default: Settings.detector_max_clips).",
+    ),
+) -> None:
+    """Detect clip-worthy moments in a source and persist them as pending clips.
+
+    Loads the source's transcript, runs the selected detector (Claude by
+    default; ``--mock`` / ``--provider`` switch it), and writes one pending
+    ``Clip`` row per ranked candidate with a locally derived transcript excerpt.
+    Refuses (exit 1) if the source is unknown or has no transcript, or if the
+    detector is misconfigured (e.g. ``ANTHROPIC_API_KEY`` unset).
+    """
+    selected = PROVIDER_MOCK if mock else provider
+    try:
+        detector = make_detector(selected)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    try:
+        with session_scope() as session:
+            clips = detect_for_source(session, source_id, detector=detector, max_clips=max_clips)
+            # Read everything we report INSIDE the session, before it closes.
+            summary = [
+                (c.start_seconds, c.end_seconds, c.score, c.title)
+                for c in clips
+                if isinstance(c, Clip)
+            ]
+    except (DetectSourceNotFoundError, TranscriptMissingError, DetectorConfigError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(
+        f"Detected {len(summary)} candidate clips for source {source_id} (provider={selected}):"
+    )
+    for start, end, score, title in summary:
+        score_str = f"{score:.2f}" if score is not None else "n/a"
+        typer.echo(f"  {_mmss(start)}-{_mmss(end)}  score={score_str}  {title}")
 
 
 def main() -> None:

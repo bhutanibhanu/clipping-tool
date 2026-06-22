@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # is omitted (the prompt, not a sampling knob, carries determinism there). The
     # value still applies to OpenAI-compatible/local providers (T3B).
     detector_temperature: float = 0.0
+    # Default number of candidate clips to surface per source (the eval gate's
+    # "top 5"); CLI `--max-clips` overrides it.
+    detector_max_clips: int = 5
 
     # OpenAI-compatible detection provider (T3B): a free local/dev path that
     # targets any `/chat/completions` endpoint. Defaults point at Ollama's

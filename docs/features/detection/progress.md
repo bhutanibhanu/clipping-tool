@@ -30,7 +30,7 @@ on the Air.** A free Ollama eval de-risks T6 but does not replace it: the real b
 - [x] T2 — Postprocess (pure: snap + clamp + drop + dedup)
 - [x] T3 — Claude `Detector` provider + Core-4 prompt
 - [x] T3B — OpenAI-compatible provider (free local/dev testing via Ollama)
-- [ ] T4 — Detection persistence + `clipper detect <source_id>`
+- [x] T4 — Detection persistence + `clipper detect <source_id>`
 - [ ] T5 — Eval harness (`clipper detect --eval`)
 - [ ] T6 — 🚦 GO/NO-GO gate run (human judgment, on the 8 GB Air)
 
@@ -100,7 +100,7 @@ Legend: `[ ]` todo · `[>]` in progress · `[x]` done (short sha) · `[!]` block
   - WHEN the source has no transcript, the system SHALL refuse with a clear error and persist no clips.
   - The provider SHALL be selectable: `--provider {claude,openai-compat,mock}` (default `claude`); `--mock` remains a shortcut for `mock`. `openai-compat` targets `Settings.openai_base_url` (e.g. Ollama) for free/local runs. `max_clips` SHALL default from `Settings.detector_max_clips` (`5`).
 - **Tests:** with `MockDetector` — detect persists N pending clips with valid fields and a non-empty derived excerpt; all times within source duration; no-transcript refusal; provider selection resolves to the right class. The excerpt-derivation helper gets a direct unit test. (Live paths covered manually: T3B free, T6 Opus.)
-- **Status:** todo
+- **Status:** done (13 tests; `make_detector` selector w/ lazy imports, `excerpt_for`, `detect_for_source(persist=)`, CLI `detect --provider/--mock/--max-clips` matching `ingest` error style)
 
 ### T5 — Eval harness (`clipper detect --eval`)
 - **Goal:** A human-scannable eval view plus a results log so the operator can judge detection quality and iterate the prompt — the build-side of the go/no-go gate.
