@@ -45,12 +45,12 @@ on file. (v1 Phase 1, tasks T1–T5.)
 ```
 
 ## Expected behavior
-- `creator add` / `permission grant` seed the consent record (auth file path recorded, not copied); missing auth file → exit 1, nothing persisted.
+- `creator add` / `permission grant` seed the consent record (auth file path recorded, not copied); missing auth file → exit 1, nothing persisted. `permission grant` also rejects an unknown creator id (exit 1, nothing persisted), and SQLite foreign-key enforcement is ON, so orphan permission/source rows are rejected at the DB layer (T6, post-QA fix).
 - `source add` is **refused (exit 1, no row)** unless the creator has an active permission; also refused if the file is missing.
 - `ingest <source_id>` runs probe → audio → transcribe → persist as a single sequential `Job` (concurrency = 1), populating `Source.duration_seconds/width/height/transcript_path` and writing `storage/transcripts/<id>.json`; on a stage error the Job is marked `error` with the failing stage and the process does not crash; the permission gate is re-checked before any Job is created.
 
 ## Test plan
-- **52 tests, all green** (`ruff` + `mypy` 28 files + `pytest`). Mix of unit (services, gate, probe-parsing, transcript serialization, stage ordering/error capture — all in-memory, no ffmpeg/whisper) and `@pytest.mark.integration` tests that **actually ran** in this env: ffprobe/extract on a lavfi clip, faster-whisper `tiny` on a macOS `say` speech clip, and a full end-to-end ingest of a spoken clip (Job → done, transcript ≥1 segment).
+- **59 tests, all green** (`ruff` + `mypy` 28 files + `pytest`) — includes T6's creator-validation + FK-enforcement tests. Mix of unit (services, gate, probe-parsing, transcript serialization, stage ordering/error capture — all in-memory, no ffmpeg/whisper) and `@pytest.mark.integration` tests that **actually ran** in this env: ffprobe/extract on a lavfi clip, faster-whisper `tiny` on a macOS `say` speech clip, and a full end-to-end ingest of a spoken clip (Job → done, transcript ≥1 segment).
 - **Not yet covered:** a real ~1-hour video, and a run on the **8 GB M1 Air with the default `small` model** — that is the brief's mandated manual validation gate and has not been done.
 
 ## Known risks

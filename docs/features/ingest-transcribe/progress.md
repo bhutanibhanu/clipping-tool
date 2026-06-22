@@ -12,7 +12,7 @@ processing (`ingest <source_id>`).
 - [x] T3 — ffprobe probe + audio extraction (77f986c)
 - [x] T4 — faster-whisper transcriber + transcript persistence (10f38b2)
 - [x] T5 — `clipper ingest <source_id>` pipeline wiring (e41a139)
-- [ ] T6 — Fix: creator-existence check + FK enforcement (QA blocker) + cleanups
+- [x] T6 — Fix: creator-existence check + FK enforcement (QA blocker) + cleanups (bef9185)
 
 Legend: `[ ]` todo · `[>]` in progress · `[x]` done (short sha) · `[!]` blocked
 
@@ -87,4 +87,4 @@ Legend: `[ ]` todo · `[>]` in progress · `[x]` done (short sha) · `[!]` block
   - WHEN a transcript is produced, segments whose text is empty/whitespace-only are dropped (design says segments have non-empty text).
   - WHEN `faster-whisper` is not installed, `clipper ingest` exits 1 with a clear message (no raw traceback).
 - **Tests:** grant with unknown creator → error + zero PermissionRecords; FK pragma enabled (`PRAGMA foreign_keys` == 1, and an orphan FK insert raises `IntegrityError`); empty-segment filtering drops blanks; `source add` refused for unknown creator.
-- **Status:** todo
+- **Status:** done (bef9185)
