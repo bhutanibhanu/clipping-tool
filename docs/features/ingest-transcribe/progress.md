@@ -10,7 +10,7 @@ processing (`ingest <source_id>`).
 - [x] T1 — Consent records: `creator add` + `permission grant` (a45bb3b)
 - [x] T2 — Permission-gated `source add` (02c88b0)
 - [x] T3 — ffprobe probe + audio extraction (77f986c)
-- [ ] T4 — faster-whisper transcriber + transcript persistence
+- [x] T4 — faster-whisper transcriber + transcript persistence (10f38b2)
 - [ ] T5 — `clipper ingest <source_id>` pipeline wiring
 
 Legend: `[ ]` todo · `[>]` in progress · `[x]` done (short sha) · `[!]` blocked
@@ -62,7 +62,7 @@ Legend: `[ ]` todo · `[>]` in progress · `[x]` done (short sha) · `[!]` block
   - WHEN the transcript is saved, the system SHALL write JSON under `storage/` and set `Source.transcript_path`.
   - The model size and compute type SHALL be read from `Settings` (default `small` / `int8`).
 - **Tests:** unit — `Transcript`⇄JSON round-trip (no model). Integration — transcribe the synthetic fixture's audio, assert ≥1 segment; `@pytest.mark.integration`, skipped when `faster-whisper`/ffmpeg are unavailable.
-- **Status:** todo
+- **Status:** done (10f38b2)
 
 ### T5 — `clipper ingest <source_id>` pipeline wiring
 - **Goal:** Run probe → extract audio → transcribe sequentially as a Job (concurrency = 1), recording stage/progress and capturing stage errors; re-check the permission gate at ingest time.
