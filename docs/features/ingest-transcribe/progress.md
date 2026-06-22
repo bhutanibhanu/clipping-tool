@@ -1,6 +1,6 @@
 # Progress: ingest-transcribe (v1 Phase 1)
 
-_Sliced 2026-06-22 from `docs/features/v1/progress.md` (T1–T5) · 5 tasks · supervised build_
+_Sliced 2026-06-22 from `docs/features/v1/progress.md` (T1–T5) · 5 tasks + T6 (added from QA) · supervised build_
 
 Design: [`design.md`](./design.md). Master plan: [`docs/features/v1/progress.md`](../v1/progress.md).
 CLI shape: registration (`source add`, where the gate fires) is split from
@@ -12,6 +12,7 @@ processing (`ingest <source_id>`).
 - [x] T3 — ffprobe probe + audio extraction (77f986c)
 - [x] T4 — faster-whisper transcriber + transcript persistence (10f38b2)
 - [x] T5 — `clipper ingest <source_id>` pipeline wiring (e41a139)
+- [ ] T6 — Fix: creator-existence check + FK enforcement (QA blocker) + cleanups
 
 Legend: `[ ]` todo · `[>]` in progress · `[x]` done (short sha) · `[!]` blocked
 
@@ -74,3 +75,16 @@ Legend: `[ ]` todo · `[>]` in progress · `[x]` done (short sha) · `[!]` block
   - WHEN a stage raises, the system SHALL set `Job.status=error` with the failing `stage` recorded, and the process SHALL NOT crash.
 - **Tests:** unit — stage runner with a mock transcriber + monkeypatched media functions asserts stage order, progress/status transitions, and error capture. Integration — end-to-end on the fixture; skipped without ffmpeg/whisper.
 - **Status:** done (e41a139)
+
+### T6 — Fix: creator-existence check + FK enforcement (QA blocker) + cleanups
+- **Goal:** Close the orphan-permission hole both QA reviewers flagged (Codex rated it a blocker), and fold in two cheap robustness fixes they noted.
+- **Depends on:** T1–T5
+- **Files (expected):** `src/clipper/permissions/service.py`, `src/clipper/catalog.py`, `src/clipper/db/session.py`, `src/clipper/transcribe/whisper_local.py`, `src/clipper/cli.py`, `tests/test_permissions.py`, `tests/test_sources.py`, `tests/test_transcribe_store.py`
+- **Acceptance:**
+  - WHEN `grant_permission` / `clipper permission grant` is given a creator id with no Creator row, the system raises a clear error (e.g. `CreatorNotFoundError`) / exits non-zero and persists NO PermissionRecord.
+  - WHEN an app engine is created, SQLite foreign-key enforcement is ON (`PRAGMA foreign_keys=ON`), so orphan `creator_id`/`permission_id` rows are rejected at the DB layer.
+  - WHEN `source add` / `require_permission` is used with a nonexistent creator, no Source is registered (the gate holds even if an orphan permission row somehow existed).
+  - WHEN a transcript is produced, segments whose text is empty/whitespace-only are dropped (design says segments have non-empty text).
+  - WHEN `faster-whisper` is not installed, `clipper ingest` exits 1 with a clear message (no raw traceback).
+- **Tests:** grant with unknown creator → error + zero PermissionRecords; FK pragma enabled (`PRAGMA foreign_keys` == 1, and an orphan FK insert raises `IntegrityError`); empty-segment filtering drops blanks; `source add` refused for unknown creator.
+- **Status:** todo
