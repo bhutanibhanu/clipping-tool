@@ -1,19 +1,17 @@
 ## Blockers
-- `src/clipper/permissions/service.py`: `grant_permission()` does not verify that `creator_id` exists before creating an active permission record. If SQLite FK enforcement is not explicitly enabled, `permission grant --creator 999 ...` can create an orphan active permission, and `source add --creator 999 ...` can then pass the gate via `require_permission()`. This undermines the consent model and needs a creator existence check/test before ship.
+- None.
 
 ## Non-blocking issues
-- `src/clipper/transcribe/whisper_local.py`: `WhisperTranscriber.transcribe()` does not filter empty stripped segment text, although the design acceptance says segments should have non-empty text.
-- `docs/features/ingest-transcribe/handoff.md`: the handoff says `ruff + mypy + pytest` all passed and “52 tests” ran, but that cannot be verified from the diff itself. The claimed test count also looks inconsistent with the visible test cases, so treat that as suspect unless backed by actual command output.
-- `docs/features/ingest-transcribe/design.md` says consent records include a “stored authorization file,” while implementation only records an absolute path and does not copy the file. The handoff is honest about that behavior, but the design wording is ambiguous.
+- `src/clipper/permissions/service.py`: `require_permission()` still does not explicitly verify the `Creator` row exists. FK enforcement now prevents new orphan writes, so this is not the original ship blocker, but a legacy/preexisting orphan `PermissionRecord` would be rejected later by DB integrity rather than as a clean `PermissionRequiredError`.
+- `tests/test_sources.py`: `test_register_source_refused_even_with_orphan_permission_row` does not actually prove the orphan case because `session.no_autoflush` keeps the forged permission row out of the query result.
 
 ## Suggested tests
-- `permission grant` with an unknown creator id should fail and persist no `PermissionRecord`.
-- `source add` should fail for an unknown creator even if an orphan permission row somehow exists.
-- `WhisperTranscriber.transcribe()` should either drop empty-text segments or assert none are returned.
-- CLI-level `ingest` failure path should assert exit 1 and that the failed `Job.stage`/`Job.error` are persisted.
+- Add a regression test that inserts an orphan active `PermissionRecord` with FK enforcement temporarily disabled or via raw SQL, then confirms `register_source()` fails cleanly.
+- Add a CLI-level `ingest` test where `WhisperTranscriber` construction raises `TranscriberUnavailableError`, asserting exit 1 and no traceback.
+- Add a DB test against the configured file-backed engine, not only in-memory SQLite, asserting `PRAGMA foreign_keys == 1`.
 
 ## Verdict
-NO_SHIP
+SHIP
 
 ## Reasoning
-The main feature behavior is broadly aligned with the design: source registration and ingest are permission-gated, ffmpeg is invoked via arg lists, tests mostly use temp storage, and stage failures are captured as job state. The orphan permission path is a must-fix data integrity issue because the permission gate trusts `PermissionRecord.creator_id` without proving the creator exists.
+The original blocker is resolved: `grant_permission()` now checks creator existence before persisting, the CLI catches `CreatorNotFoundError`, and the engine connect listener enables SQLite foreign-key enforcement. The remaining orphan-permission edge is mostly a legacy-data/defense-in-depth concern because normal app paths can no longer create the bad state, and the other requested fixes for blank transcript segments and missing `faster-whisper` are present.
