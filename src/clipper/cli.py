@@ -14,11 +14,15 @@ from pathlib import Path
 import typer
 
 from clipper import __version__
-from clipper.catalog import create_creator
+from clipper.catalog import SourceFileNotFoundError, create_creator, register_source
 from clipper.config import get_settings
 from clipper.db.session import session_scope
 from clipper.media.ffmpeg import ffmpeg_available
-from clipper.permissions.service import AuthorizationFileNotFoundError, grant_permission
+from clipper.permissions.service import (
+    AuthorizationFileNotFoundError,
+    PermissionRequiredError,
+    grant_permission,
+)
 
 app = typer.Typer(
     help="clipper — local-first AI clipping tool.",
@@ -28,8 +32,10 @@ app = typer.Typer(
 
 creator_app = typer.Typer(help="Manage creators (the authorized content owners).")
 permission_app = typer.Typer(help="Manage permission records (proof of consent).")
+source_app = typer.Typer(help="Register source videos (gated on an active permission).")
 app.add_typer(creator_app, name="creator")
 app.add_typer(permission_app, name="permission")
+app.add_typer(source_app, name="source")
 
 
 @app.command()
@@ -89,6 +95,28 @@ def permission_grant(
         raise typer.Exit(code=1) from exc
     typer.echo(f"Granted permission {record_id} (scope={scope}) for creator {creator}")
     typer.echo(f"  authorization file: {recorded_path}")
+
+
+@source_app.command("add")
+def source_add(
+    file: Path = typer.Option(..., "--file", help="Path to the local video file to register."),
+    creator: int = typer.Option(..., "--creator", help="Creator id the video belongs to."),
+) -> None:
+    """Register a video as a Source (refused unless the creator has consent on file)."""
+    try:
+        with session_scope() as session:
+            source = register_source(session, creator_id=creator, file_path=file)
+            session.flush()
+            source_id = source.id
+            recorded_path = source.file_path
+    except SourceFileNotFoundError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except PermissionRequiredError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Created source {source_id} for creator {creator}")
+    typer.echo(f"  file: {recorded_path}")
 
 
 def main() -> None:

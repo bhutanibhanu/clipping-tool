@@ -21,6 +21,14 @@ class AuthorizationFileNotFoundError(FileNotFoundError):
     """Raised when the authorization file for a grant does not exist on disk."""
 
 
+class PermissionRequiredError(Exception):
+    """Raised when an operation needs an active permission the creator lacks.
+
+    This is the account-safety gate: a Source must never be processed (or even
+    registered) without proof of consent on file for its creator.
+    """
+
+
 def grant_permission(
     session: Session,
     creator_id: int,
@@ -61,3 +69,19 @@ def active_permission_for(session: Session, creator_id: int) -> PermissionRecord
         .order_by(PermissionRecord.granted_at.desc(), PermissionRecord.id.desc())
     )
     return session.scalars(stmt).first()
+
+
+def require_permission(session: Session, creator_id: int) -> PermissionRecord:
+    """Return the creator's active PermissionRecord or raise ``PermissionRequiredError``.
+
+    The enforcement gate: defers the active/revoked logic to
+    ``active_permission_for`` and only converts a ``None`` result into a hard
+    failure, so callers can register/process a Source solely when consent is on
+    file.
+    """
+    record = active_permission_for(session, creator_id)
+    if record is None:
+        raise PermissionRequiredError(
+            f"creator {creator_id} has no active permission record; grant one first"
+        )
+    return record
