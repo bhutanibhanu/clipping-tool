@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from sqlalchemy import Engine, create_engine, func, select
+from sqlalchemy import Engine, create_engine, func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from clipper.catalog import create_creator
@@ -11,6 +12,7 @@ from clipper.db.models import PermissionRecord, PermissionStatus
 from clipper.db.session import init_db
 from clipper.permissions.service import (
     AuthorizationFileNotFoundError,
+    CreatorNotFoundError,
     active_permission_for,
     grant_permission,
 )
@@ -70,6 +72,35 @@ def test_grant_with_missing_auth_file_raises_and_persists_nothing(engine: Engine
         session.commit()
 
         assert session.scalar(select(func.count()).select_from(PermissionRecord)) == 0
+
+
+def test_grant_with_unknown_creator_raises_and_persists_nothing(
+    engine: Engine, tmp_path: Path
+) -> None:
+    auth = tmp_path / "consent.pdf"
+    auth.write_text("signed")
+
+    with Session(engine) as session:
+        # No creator was created, so id 999 has no Creator row.
+        with pytest.raises(CreatorNotFoundError):
+            grant_permission(session, 999, "youtube", auth)
+        session.commit()
+
+        assert session.scalar(select(func.count()).select_from(PermissionRecord)) == 0
+
+
+def test_sqlite_foreign_keys_enforced_on_app_engine(engine: Engine) -> None:
+    """FK enforcement is ON, so an orphan creator_id is rejected at the DB layer."""
+    with Session(engine) as session:
+        # The connect-event listener should have issued PRAGMA foreign_keys=ON.
+        assert session.scalar(select(func.count()).select_from(PermissionRecord)) == 0
+        pragma = session.execute(text("PRAGMA foreign_keys")).scalar()
+        assert pragma == 1
+
+        # Inserting a permission for a nonexistent creator must fail on flush.
+        session.add(PermissionRecord(creator_id=999, scope="youtube"))
+        with pytest.raises(IntegrityError):
+            session.flush()
 
 
 def test_active_permission_for_returns_active(engine: Engine, tmp_path: Path) -> None:

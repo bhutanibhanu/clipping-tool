@@ -14,6 +14,30 @@ from clipper.config import get_settings
 from clipper.transcribe.base import Segment, Transcript
 
 
+class TranscriberUnavailableError(RuntimeError):
+    """Raised when the optional ``faster-whisper`` engine is not installed.
+
+    A specific subclass (rather than a bare ``RuntimeError``) so the CLI can
+    catch *this* and exit cleanly without swallowing unrelated runtime errors.
+    """
+
+
+def _segments_from_whisper(segments_iter: object) -> list[Segment]:
+    """Map faster-whisper segments to `Segment`s, dropping blank text.
+
+    Pure helper (no model needed) so the empty/whitespace-only filtering is
+    unit-testable: any segment whose ``text`` strips to empty is skipped, and
+    the kept text is stored already stripped.
+    """
+    segments: list[Segment] = []
+    for seg in segments_iter:  # type: ignore[attr-defined]
+        text = seg.text.strip()
+        if not text:
+            continue
+        segments.append(Segment(start=seg.start, end=seg.end, text=text))
+    return segments
+
+
 class WhisperTranscriber:
     """Transcribe local audio with faster-whisper (satisfies `Transcriber`)."""
 
@@ -29,10 +53,7 @@ class WhisperTranscriber:
         """Return a timestamped `Transcript` for the audio at `audio_path`."""
         model = self._whisper_model_cls(self.model, device="cpu", compute_type=self.compute_type)
         segments_iter, info = model.transcribe(str(audio_path))
-        segments = [
-            Segment(start=seg.start, end=seg.end, text=seg.text.strip()) for seg in segments_iter
-        ]
-        return Transcript(segments=segments, language=info.language)
+        return Transcript(segments=_segments_from_whisper(segments_iter), language=info.language)
 
 
 def _load_whisper_model_cls() -> type:
@@ -40,5 +61,7 @@ def _load_whisper_model_cls() -> type:
     try:
         from faster_whisper import WhisperModel  # type: ignore[import-untyped]
     except ImportError as exc:  # pragma: no cover - exercised via monkeypatch
-        raise RuntimeError("faster-whisper not installed; pip install -e '.[transcribe]'") from exc
+        raise TranscriberUnavailableError(
+            "faster-whisper not installed; pip install -e '.[transcribe]'"
+        ) from exc
     return WhisperModel

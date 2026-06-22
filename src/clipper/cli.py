@@ -21,10 +21,12 @@ from clipper.db.session import session_scope
 from clipper.media.ffmpeg import ffmpeg_available
 from clipper.permissions.service import (
     AuthorizationFileNotFoundError,
+    CreatorNotFoundError,
     PermissionRequiredError,
     grant_permission,
 )
 from clipper.pipeline.jobs import SourceNotFoundError, run_ingest
+from clipper.transcribe.whisper_local import TranscriberUnavailableError
 
 app = typer.Typer(
     help="clipper — local-first AI clipping tool.",
@@ -92,7 +94,7 @@ def permission_grant(
             session.flush()
             record_id = record.id
             recorded_path = record.authorization_file_path
-    except AuthorizationFileNotFoundError as exc:
+    except (CreatorNotFoundError, AuthorizationFileNotFoundError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(f"Granted permission {record_id} (scope={scope}) for creator {creator}")
@@ -141,7 +143,7 @@ def ingest(
             error = job.error
             duration = job.source.duration_seconds
             transcript_path = job.source.transcript_path
-    except (PermissionRequiredError, SourceNotFoundError) as exc:
+    except (PermissionRequiredError, SourceNotFoundError, TranscriberUnavailableError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 

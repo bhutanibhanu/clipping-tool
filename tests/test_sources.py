@@ -20,7 +20,7 @@ from clipper.catalog import SourceFileNotFoundError, create_creator, register_so
 from clipper.cli import app
 from clipper.config import get_settings
 from clipper.db import session as session_mod
-from clipper.db.models import PermissionStatus, Source
+from clipper.db.models import PermissionRecord, PermissionStatus, Source
 from clipper.db.session import init_db
 from clipper.permissions.service import PermissionRequiredError, grant_permission
 
@@ -101,6 +101,53 @@ def test_register_source_with_revoked_permission_raises_and_persists_nothing(
         with pytest.raises(PermissionRequiredError):
             register_source(session, creator_id=creator.id, file_path=video)
         session.commit()
+
+        assert session.scalar(select(func.count()).select_from(Source)) == 0
+
+
+def test_register_source_for_unknown_creator_refused_persists_nothing(
+    engine: Engine, tmp_path: Path
+) -> None:
+    """The gate holds for a creator id with no Creator row: no Source persisted.
+
+    ``require_permission`` finds no active permission for a nonexistent creator
+    (none can exist once FK enforcement + the grant guard are in place), so
+    registration is refused before anything is written.
+    """
+    video = tmp_path / "talk.mp4"
+    video.write_bytes(b"\x00\x00")
+
+    with Session(engine) as session:
+        with pytest.raises(PermissionRequiredError):
+            register_source(session, creator_id=999, file_path=video)
+        session.commit()
+
+        assert session.scalar(select(func.count()).select_from(Source)) == 0
+
+
+def test_register_source_refused_even_with_orphan_permission_row(
+    engine: Engine, tmp_path: Path
+) -> None:
+    """Even if an orphan active permission row existed, source add stays refused.
+
+    We bypass the grant guard by adding the row directly with autoflush off so
+    we can assert the gate itself (not just the grant path) refuses a creator
+    that has no Creator row. No Source must be persisted.
+    """
+    video = tmp_path / "talk.mp4"
+    video.write_bytes(b"\x00\x00")
+
+    with Session(engine) as session:
+        # Forge an orphan active permission without going through grant_permission
+        # or flushing it (FK enforcement would reject the flush). The gate must
+        # still refuse because no Creator backs creator_id 999.
+        with session.no_autoflush:
+            session.add(
+                PermissionRecord(creator_id=999, scope="youtube", status=PermissionStatus.active)
+            )
+            with pytest.raises(PermissionRequiredError):
+                register_source(session, creator_id=999, file_path=video)
+        session.rollback()
 
         assert session.scalar(select(func.count()).select_from(Source)) == 0
 

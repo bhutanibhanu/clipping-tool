@@ -106,6 +106,35 @@ def test_permission_grant_missing_file_exits_nonzero_and_persists_nothing(
         assert session.scalar(select(func.count()).select_from(PermissionRecord)) == 0
 
 
+def test_permission_grant_unknown_creator_exits_nonzero_and_persists_nothing(
+    storage_in_tmp: Path,
+) -> None:
+    # The DB exists but has no Creator with id 999; the auth file is valid so the
+    # only failing guard is the creator-existence check.
+    runner.invoke(app, ["creator", "add", "--name", "Owner"])  # creates the DB + creator 1
+    auth = storage_in_tmp / "consent.pdf"
+    auth.write_text("signed")
+
+    result = runner.invoke(
+        app,
+        [
+            "permission",
+            "grant",
+            "--creator",
+            "999",
+            "--scope",
+            "youtube",
+            "--auth-file",
+            str(auth),
+        ],
+    )
+    assert result.exit_code != 0
+    assert "999" in result.output  # the clear error names the missing creator
+
+    with Session(session_mod.get_engine()) as session:
+        assert session.scalar(select(func.count()).select_from(PermissionRecord)) == 0
+
+
 def test_existing_commands_intact() -> None:
     assert runner.invoke(app, ["version"]).exit_code == 0
     assert runner.invoke(app, ["doctor"]).exit_code == 0

@@ -14,11 +14,20 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from clipper.db.models import PermissionRecord, PermissionStatus
+from clipper.db.models import Creator, PermissionRecord, PermissionStatus
 
 
 class AuthorizationFileNotFoundError(FileNotFoundError):
     """Raised when the authorization file for a grant does not exist on disk."""
+
+
+class CreatorNotFoundError(LookupError):
+    """Raised when a grant references a creator id that has no ``Creator`` row.
+
+    Granting a permission to a nonexistent creator would create an orphan
+    consent record the gate would then trust, so the existence check happens
+    *before* anything is persisted.
+    """
 
 
 class PermissionRequiredError(Exception):
@@ -37,10 +46,16 @@ def grant_permission(
 ) -> PermissionRecord:
     """Persist an active PermissionRecord for ``creator_id``.
 
-    ``auth_file`` must exist; its absolute path is recorded (the file itself
-    is left in place, not copied). Raises ``AuthorizationFileNotFoundError``
-    and persists nothing if the path is missing.
+    Both guards run before anything is persisted: ``creator_id`` must reference
+    an existing ``Creator`` (else ``CreatorNotFoundError``) and ``auth_file``
+    must exist (else ``AuthorizationFileNotFoundError``). On success the
+    file's absolute path is recorded (the file itself is left in place, not
+    copied). A failed check persists nothing.
     """
+    if session.get(Creator, creator_id) is None:
+        raise CreatorNotFoundError(
+            f"creator {creator_id} not found; create the creator before granting permission"
+        )
     if not auth_file.exists():
         raise AuthorizationFileNotFoundError(f"authorization file not found: {auth_file}")
 

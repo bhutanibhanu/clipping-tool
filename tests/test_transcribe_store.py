@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -11,7 +12,20 @@ from clipper.db.session import init_db
 from clipper.transcribe import whisper_local
 from clipper.transcribe.base import Transcriber, Transcript
 from clipper.transcribe.store import load_transcript, persist_transcript, save_transcript
-from clipper.transcribe.whisper_local import WhisperTranscriber
+from clipper.transcribe.whisper_local import (
+    TranscriberUnavailableError,
+    WhisperTranscriber,
+    _segments_from_whisper,
+)
+
+
+@dataclass
+class _FakeSeg:
+    """Minimal stand-in for a faster-whisper segment (just the fields we read)."""
+
+    start: float
+    end: float
+    text: str
 
 
 def test_save_load_roundtrip(transcript: Transcript, tmp_path: Path) -> None:
@@ -55,8 +69,33 @@ def test_whisper_transcriber_satisfies_protocol() -> None:
 
 def test_whisper_raises_clear_error_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     def _boom() -> type:
-        raise RuntimeError("faster-whisper not installed; pip install -e '.[transcribe]'")
+        raise TranscriberUnavailableError(
+            "faster-whisper not installed; pip install -e '.[transcribe]'"
+        )
 
     monkeypatch.setattr(whisper_local, "_load_whisper_model_cls", _boom)
-    with pytest.raises(RuntimeError, match="faster-whisper not installed"):
+    # A specific subclass so the CLI can catch it without swallowing other errors,
+    # while staying a RuntimeError for existing callers.
+    assert issubclass(TranscriberUnavailableError, RuntimeError)
+    with pytest.raises(TranscriberUnavailableError, match="faster-whisper not installed"):
         WhisperTranscriber()
+
+
+def test_segment_mapping_drops_empty_and_whitespace_text() -> None:
+    raw = [
+        _FakeSeg(0.0, 1.0, "  hello  "),
+        _FakeSeg(1.0, 2.0, "   "),  # whitespace-only -> dropped
+        _FakeSeg(2.0, 3.0, ""),  # empty -> dropped
+        _FakeSeg(3.0, 4.0, "world"),
+    ]
+    segments = _segments_from_whisper(iter(raw))
+
+    assert [(s.start, s.end, s.text) for s in segments] == [
+        (0.0, 1.0, "hello"),  # text stored stripped
+        (3.0, 4.0, "world"),
+    ]
+
+
+def test_segment_mapping_keeps_all_when_none_blank() -> None:
+    raw = [_FakeSeg(0.0, 1.0, "a"), _FakeSeg(1.0, 2.0, "b")]
+    assert len(_segments_from_whisper(iter(raw))) == 2
