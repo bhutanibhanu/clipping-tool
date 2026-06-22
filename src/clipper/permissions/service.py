@@ -1,0 +1,63 @@
+"""Permission records: grant consent and look up the active record.
+
+A ``PermissionRecord`` is the proof-of-consent gate the pipeline enforces
+before any source is processed. Granting one records the absolute path of an
+authorization file the operator already has on disk (the file is *not*
+copied — provenance/export handles that later). Lookups never return a
+revoked record. Both functions take an explicit ``Session`` for testability.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from clipper.db.models import PermissionRecord, PermissionStatus
+
+
+class AuthorizationFileNotFoundError(FileNotFoundError):
+    """Raised when the authorization file for a grant does not exist on disk."""
+
+
+def grant_permission(
+    session: Session,
+    creator_id: int,
+    scope: str,
+    auth_file: Path,
+) -> PermissionRecord:
+    """Persist an active PermissionRecord for ``creator_id``.
+
+    ``auth_file`` must exist; its absolute path is recorded (the file itself
+    is left in place, not copied). Raises ``AuthorizationFileNotFoundError``
+    and persists nothing if the path is missing.
+    """
+    if not auth_file.exists():
+        raise AuthorizationFileNotFoundError(f"authorization file not found: {auth_file}")
+
+    record = PermissionRecord(
+        creator_id=creator_id,
+        scope=scope,
+        authorization_file_path=str(auth_file.resolve()),
+        status=PermissionStatus.active,
+    )
+    session.add(record)
+    session.flush()  # assign the primary key without ending the transaction
+    return record
+
+
+def active_permission_for(session: Session, creator_id: int) -> PermissionRecord | None:
+    """Return the most recent active PermissionRecord for the creator, else None.
+
+    A ``revoked`` record is never returned.
+    """
+    stmt = (
+        select(PermissionRecord)
+        .where(
+            PermissionRecord.creator_id == creator_id,
+            PermissionRecord.status == PermissionStatus.active,
+        )
+        .order_by(PermissionRecord.granted_at.desc(), PermissionRecord.id.desc())
+    )
+    return session.scalars(stmt).first()
