@@ -249,6 +249,20 @@ def test_postprocess_drops_candidate_degenerate_after_snap() -> None:
     assert postprocess([_clip(50.0, 70.0)], short_segs, 40.0) == []
 
 
+def test_postprocess_drops_mid_segment_zero_length_not_widened() -> None:
+    # Codex round-2 regression: with one wide segment, a raw zero-length point
+    # (50, 50) would snap OUTWARD to (0, 100). The raw end<=start drop must catch
+    # it BEFORE snapping, or it gets fabricated into a clip.
+    one_seg = [Segment(0.0, 100.0, "one wide segment")]
+    assert postprocess([_clip(50.0, 50.0)], one_seg, 100.0) == []
+
+
+def test_postprocess_drops_mid_segment_reversed_not_widened() -> None:
+    # Same hole for a reversed raw range (60, 50) — would also snap to (0, 100).
+    one_seg = [Segment(0.0, 100.0, "one wide segment")]
+    assert postprocess([_clip(60.0, 50.0)], one_seg, 100.0) == []
+
+
 def test_postprocess_snaps_then_clamps_too_long() -> None:
     # [10,40] snaps to [0,65] (65s), then clamps (too long) to [0,60].
     [out] = postprocess([_clip(10.0, 40.0)], SEGMENTS, SOURCE)

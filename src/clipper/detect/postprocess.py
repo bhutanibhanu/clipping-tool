@@ -6,7 +6,7 @@ long, sit out of bounds, or near-duplicate one another. These functions clean
 that up deterministically — no I/O, no network, no DB — so every provider shares
 exactly one notion of "a clean, ranked, non-overlapping clip list".
 
-Pipeline: ``snap → clamp → drop → dedup → rank`` (see `postprocess`).
+Pipeline: ``drop-invalid → snap → clamp → drop → dedup → rank`` (see `postprocess`).
 
 This module is the canonical home for the clip-length bounds; `mock.py` keeps
 its own copy only to stay import-light, but these are the values of record.
@@ -173,10 +173,16 @@ def postprocess(
     """
     adjusted: list[CandidateClip] = []
     for cand in candidates:
+        if cand.end <= cand.start:
+            # Raw degenerate/inverted range (zero-length or reversed). Drop BEFORE
+            # snapping: snapping widens times outward, so e.g. (50, 50) or (60, 50)
+            # would otherwise snap to a valid-looking window like (0, 100) and get
+            # fabricated into a clip by clamp_duration.
+            continue
         start, end = snap_to_segments(cand.start, cand.end, segments, source_duration)
         if end <= start:
-            # Raw inverted/zero-length range (e.g. start=90,end=30 or start==end):
-            # drop it now so clamp_duration can't extend it into a fabricated clip.
+            # Degenerate only after snapping (both times collapse onto one boundary,
+            # or both clamp past a short source) — drop before clamp can extend it.
             continue
         start, end = clamp_duration(
             start, end, source_duration, min_seconds=min_seconds, max_seconds=max_seconds
