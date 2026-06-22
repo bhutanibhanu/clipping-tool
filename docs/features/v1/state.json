@@ -1,0 +1,10 @@
+{
+  "slug": "v1",
+  "phase": "planned",
+  "design": "docs/PROJECT_BRIEF.md",
+  "generated": "2026-06-22",
+  "tasks_total": 16,
+  "tasks_detailed": 9,
+  "gate": "T9 — detection-quality eyeball-eval blocks T10-T16",
+  "notes": "Phase 0 scaffold complete. Phases 1-2 detailed (T1-T9); Phases 3-5 sketched (T10-T16), re-plan after the T9 gate."
+}
