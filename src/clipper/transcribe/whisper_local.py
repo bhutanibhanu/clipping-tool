@@ -59,7 +59,7 @@ class WhisperTranscriber:
 def _load_whisper_model_cls() -> type:
     """Import faster-whisper lazily; raise a clear error if it is absent."""
     try:
-        from faster_whisper import WhisperModel  # type: ignore[import-untyped]
+        from faster_whisper import WhisperModel
     except ImportError as exc:  # pragma: no cover - exercised via monkeypatch
         raise TranscriberUnavailableError(
             "faster-whisper not installed; pip install -e '.[transcribe]'"

@@ -32,7 +32,7 @@ dependencies = [
 # Native ML wheels (ctranslate2) — installed in Phase 1, kept out of the core
 # install so the skeleton sets up cleanly. Sized for the 8 GB M1 Air.
 transcribe = ["faster-whisper>=1.0"]
-dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11"]
+dev = ["pytest>=8,<10", "ruff>=0.15,<0.16", "mypy>=2.1,<3"]
 
 [project.scripts]
 clipper = "clipper.cli:main"
@@ -69,3 +69,10 @@ disallow_untyped_defs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 no_implicit_optional = true
+
+# faster-whisper ships no py.typed. Silence its untyped/missing-import here
+# (robust across mypy versions and the .[dev] vs .[dev,transcribe] installs)
+# rather than via an inline ignore whose error code drifts between mypy majors.
+[[tool.mypy.overrides]]
+module = "faster_whisper.*"
+ignore_missing_imports = true

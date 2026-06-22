@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -62,6 +63,10 @@ def test_persist_transcript_sets_source_path(transcript: Transcript, tmp_path: P
         assert load_transcript(Path(source.transcript_path)) == transcript
 
 
+@pytest.mark.skipif(
+    importlib.util.find_spec("faster_whisper") is None,
+    reason="faster-whisper not installed (.[transcribe])",
+)
 def test_whisper_transcriber_satisfies_protocol() -> None:
     # Structural check: WhisperTranscriber is a Transcriber without a live model.
     assert isinstance(WhisperTranscriber(model="tiny"), Transcriber)
