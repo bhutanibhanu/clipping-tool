@@ -7,7 +7,7 @@ CLI shape: registration (`source add`, where the gate fires) is split from
 processing (`ingest <source_id>`).
 
 ## Task list
-- [ ] T1 — Consent records: `creator add` + `permission grant`
+- [x] T1 — Consent records: `creator add` + `permission grant` (a45bb3b)
 - [ ] T2 — Permission-gated `source add`
 - [ ] T3 — ffprobe probe + audio extraction
 - [ ] T4 — faster-whisper transcriber + transcript persistence
@@ -29,7 +29,7 @@ Legend: `[ ]` todo · `[>]` in progress · `[x]` done (short sha) · `[!]` block
   - WHEN `--auth-file` points to a missing path, the system SHALL exit non-zero and persist no PermissionRecord.
   - WHEN `active_permission_for(creator_id)` is called, the system SHALL return the active record and SHALL NOT return a `revoked` one.
 - **Tests:** service-level — grant creates an active record; missing auth file raises and persists nothing; `active_permission_for` returns active and skips revoked. (CLI exercised via typer `CliRunner`.)
-- **Status:** todo
+- **Status:** done (a45bb3b)
 
 ### T2 — Permission-gated `source add`
 - **Goal:** Register a local video as a Source only if its creator has an active permission; refuse otherwise.
