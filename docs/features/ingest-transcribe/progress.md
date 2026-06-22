@@ -11,7 +11,7 @@ processing (`ingest <source_id>`).
 - [x] T2 — Permission-gated `source add` (02c88b0)
 - [x] T3 — ffprobe probe + audio extraction (77f986c)
 - [x] T4 — faster-whisper transcriber + transcript persistence (10f38b2)
-- [ ] T5 — `clipper ingest <source_id>` pipeline wiring
+- [x] T5 — `clipper ingest <source_id>` pipeline wiring (e41a139)
 
 Legend: `[ ]` todo · `[>]` in progress · `[x]` done (short sha) · `[!]` blocked
 
@@ -73,4 +73,4 @@ Legend: `[ ]` todo · `[>]` in progress · `[x]` done (short sha) · `[!]` block
   - WHEN the source's permission is missing or revoked at ingest time, the system SHALL refuse and leave no Job in `done`.
   - WHEN a stage raises, the system SHALL set `Job.status=error` with the failing `stage` recorded, and the process SHALL NOT crash.
 - **Tests:** unit — stage runner with a mock transcriber + monkeypatched media functions asserts stage order, progress/status transitions, and error capture. Integration — end-to-end on the fixture; skipped without ffmpeg/whisper.
-- **Status:** todo
+- **Status:** done (e41a139)
