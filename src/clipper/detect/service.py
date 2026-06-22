@@ -143,8 +143,14 @@ def detect_for_source(
     When ``persist`` is true (the CLI path) it creates one pending `Clip` row per
     candidate — mapping ``start→start_seconds``, ``end→end_seconds`` and copying
     ``score``/``reason``/``title``/``description``/``hashtags`` — adds and flushes
-    them, and returns the `Clip` rows. When ``persist`` is false (the eval path)
-    it returns the `CandidateClip`s unchanged and writes nothing.
+    them, and returns the `Clip` rows. Persisted times are clamped into
+    ``[0, source.duration_seconds]`` (the acceptance invariant) when the source
+    duration is known; a candidate that collapses to ``end <= start`` after
+    clamping (i.e. lies fully out of bounds) is skipped, and the
+    ``transcript_excerpt`` is derived from the *clamped* window. When the source
+    duration is unknown (``None``) times are persisted as-is. When ``persist`` is
+    false (the eval path) it returns the `CandidateClip`s unchanged and writes
+    nothing.
     """
     candidates, segments = detect_candidates_for_source(
         session, source_id, detector=detector, max_clips=max_clips
@@ -153,19 +159,29 @@ def detect_for_source(
     if not persist:
         return candidates
 
+    # Already loaded by detect_candidates_for_source — served from the identity map.
+    source = session.get(Source, source_id)
+    duration = source.duration_seconds if source is not None else None
+
     clips: list[Clip] = []
     for cand in candidates:
+        start, end = cand.start, cand.end
+        if duration is not None:
+            start = max(0.0, min(start, duration))
+            end = max(0.0, min(end, duration))
+            if end <= start:
+                continue  # fully out of bounds / degenerate after clamping — skip it
         clip = Clip(
             source_id=source_id,
-            start_seconds=cand.start,
-            end_seconds=cand.end,
+            start_seconds=start,
+            end_seconds=end,
             status=ClipStatus.pending,
             score=cand.score,
             reason=cand.reason,
             title=cand.title,
             description=cand.description,
             hashtags=list(cand.hashtags),
-            transcript_excerpt=excerpt_for(segments, cand.start, cand.end),
+            transcript_excerpt=excerpt_for(segments, start, end),
         )
         session.add(clip)
         clips.append(clip)

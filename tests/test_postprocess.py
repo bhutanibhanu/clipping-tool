@@ -13,6 +13,7 @@ from clipper.detect.base import CandidateClip
 from clipper.detect.postprocess import (
     MAX_CLIP_SECONDS,
     MIN_CLIP_SECONDS,
+    OVERLAP_THRESHOLD,
     clamp_duration,
     dedup_overlapping,
     postprocess,
@@ -171,6 +172,47 @@ def test_dedup_equal_score_equal_length_keeps_earlier() -> None:
     assert [c.title for c in dedup_overlapping([early, late])] == ["early"]
 
 
+def test_dedup_three_way_overlap_keeps_highest_not_just_first_conflict() -> None:
+    # A 3-way case the OLD greedy (first-conflict) dedup got wrong: a mid-scored
+    # candidate overlaps two others. Globally it must lose to the highest-scored
+    # clip it conflicts with and be dropped — not survive by displacing a lower
+    # keeper while still >50%-overlapping a higher one.
+    #   top    = [0,40]  (40s) score 0.9
+    #   mid    = [10,40] (30s) score 0.6 — overlap w/ top = 30/30 = 1.0 (> 0.5)
+    #   low    = [12,40] (28s) score 0.3 — overlap w/ top = 28/28 = 1.0 (> 0.5)
+    top = _clip(0.0, 40.0, score=0.9, title="top")
+    mid = _clip(10.0, 40.0, score=0.6, title="mid")
+    low = _clip(12.0, 40.0, score=0.3, title="low")
+    # Feed in an order that would have tripped the old order-sensitive logic.
+    for order in ([mid, low, top], [top, mid, low], [low, mid, top]):
+        kept = dedup_overlapping(order)
+        assert [c.title for c in kept] == ["top"], order
+
+    # Now a mix where a separate group survives intact alongside the winner.
+    #   other  = [100,140] (40s) score 0.5 — disjoint from the [0,40] cluster.
+    other = _clip(100.0, 140.0, score=0.5, title="other")
+    kept = dedup_overlapping([mid, other, low, top])
+    titles = {c.title for c in kept}
+    assert titles == {"top", "other"}
+    # The highest-scored of the overlapping group survived...
+    assert "top" in titles and "mid" not in titles and "low" not in titles
+    # ...and no two survivors overlap by more than the threshold.
+    for i in range(len(kept)):
+        for j in range(i + 1, len(kept)):
+            inter = min(kept[i].end, kept[j].end) - max(kept[i].start, kept[j].start)
+            shorter = min(kept[i].duration, kept[j].duration)
+            ratio = inter / shorter if inter > 0 and shorter > 0 else 0.0
+            assert ratio <= OVERLAP_THRESHOLD
+
+
+def test_dedup_output_is_score_sorted() -> None:
+    # The greedy sweep runs in preference order, so the result is already ranked.
+    a = _clip(0.0, 30.0, score=0.3, title="a")
+    b = _clip(100.0, 130.0, score=0.9, title="b")
+    c = _clip(200.0, 230.0, score=0.6, title="c")
+    assert [x.score for x in dedup_overlapping([a, b, c])] == [0.9, 0.6, 0.3]
+
+
 # --------------------------------------------------------------------------- #
 # postprocess (the full pipeline)                                             #
 # --------------------------------------------------------------------------- #
@@ -185,6 +227,26 @@ def test_postprocess_drops_zero_length_after_snap() -> None:
     # form still collapses: source_duration 0 → everything clamps to [0,0].
     cand = _clip(10.0, 40.0)
     assert postprocess([cand], SEGMENTS, 0.0) == []
+
+
+def test_postprocess_drops_raw_zero_length_not_extends() -> None:
+    # Raw start==end==30 (a zero-length point). It snaps to (30,30) and must be
+    # DROPPED before clamp_duration can fabricate a 20s clip from it — the bug.
+    assert postprocess([_clip(30.0, 30.0)], SEGMENTS, SOURCE) == []
+
+
+def test_postprocess_drops_raw_inverted_range_not_extends() -> None:
+    # Raw start=90, end=30 (inverted). Snapping yields (65, 30) — still inverted —
+    # so it is dropped, not extended by clamp into a fabricated [65, 85] clip.
+    assert postprocess([_clip(90.0, 30.0)], SEGMENTS, SOURCE) == []
+
+
+def test_postprocess_drops_candidate_degenerate_after_snap() -> None:
+    # Raw times are ordered (50 < 70) but both lie past a short 40 s source, so
+    # snap_to_segments clamps them to (40, 40) — degenerate after snapping. It
+    # must be dropped rather than clamped up into a fabricated clip.
+    short_segs = [Segment(0.0, 40.0, "only")]
+    assert postprocess([_clip(50.0, 70.0)], short_segs, 40.0) == []
 
 
 def test_postprocess_snaps_then_clamps_too_long() -> None:

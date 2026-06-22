@@ -120,30 +120,27 @@ def dedup_overlapping(
     """Drop near-duplicate clips that overlap a kept clip by more than the threshold.
 
     Two clips conflict when their overlap ratio (intersection ÷ shorter
-    duration) is strictly greater than `overlap_threshold`. Of a conflicting
-    pair the higher-scored clip wins; on a score tie the *longer* clip wins, and
-    on a further tie the *earlier* (lower `start`) one — so the outcome is fully
-    deterministic regardless of input order. A clip overlapping no kept clip is
-    always kept. Input order is otherwise preserved (this does not rank).
-    """
+    duration) is strictly greater than `overlap_threshold`. To resolve conflicts
+    globally — not just against the first keeper seen — candidates are first
+    sorted by preference (higher score, then *longer*, then *earlier*/lower
+    `start`), then greedily kept: a candidate is kept only if it conflicts with
+    *no* already-kept clip. This guarantees the highest-scored member of any
+    overlapping group survives, no two kept clips overlap more than the
+    threshold, and the result is independent of input order.
 
-    def _prefer(candidate: CandidateClip) -> tuple[float, float, float]:
-        # Higher score, then longer, then earlier (negated start) wins.
-        return (candidate.score, candidate.duration, -candidate.start)
+    Because the sweep runs in preference order, the returned list is already
+    sorted by descending score (then longer, then earlier); a caller that ranks
+    afterwards is therefore doing redundant (but harmless) work.
+    """
+    # Higher score, then longer, then earlier (lower start) wins — express as an
+    # ascending key by negating the "bigger is better" fields.
+    ordered = sorted(candidates, key=lambda c: (-c.score, -c.duration, c.start))
 
     kept: list[CandidateClip] = []
-    for cand in candidates:
-        conflict_idx: int | None = None
-        for i, keeper in enumerate(kept):
-            if _overlap_ratio(cand, keeper) > overlap_threshold:
-                conflict_idx = i
-                break
-        if conflict_idx is None:
-            kept.append(cand)
-        elif _prefer(cand) > _prefer(kept[conflict_idx]):
-            # The newcomer beats the clip it conflicts with — replace it.
-            kept[conflict_idx] = cand
-        # else: the existing keeper wins; drop `cand`.
+    for cand in ordered:
+        if any(_overlap_ratio(cand, keeper) > overlap_threshold for keeper in kept):
+            continue  # conflicts with a higher-preference clip already kept — drop it
+        kept.append(cand)
     return kept
 
 
@@ -158,14 +155,18 @@ def postprocess(
 ) -> list[CandidateClip]:
     """Turn raw candidates into a clean, ranked, non-overlapping list.
 
-    Runs ``snap → clamp → drop → dedup → rank``:
+    Runs ``snap → drop-degenerate → clamp → drop → dedup → rank``:
 
     1. **snap** each candidate's times out to the enclosing segment boundaries;
-    2. **clamp** its duration into ``[min_seconds, max_seconds]`` within source bounds;
-    3. **drop** anything with ``end <= start`` after the above;
-    4. **dedup** clips overlapping a kept clip by more than `overlap_threshold`,
+    2. **drop** any candidate that is already degenerate after snapping
+       (``snapped_end <= snapped_start`` — e.g. raw inverted/zero-length times),
+       *before* clamping can fabricate a clip out of it;
+    3. **clamp** its duration into ``[min_seconds, max_seconds]`` within source bounds;
+    4. **drop** anything still ``end <= start`` (defensive: covers the
+       source-shorter-than-min edge);
+    5. **dedup** clips overlapping a kept clip by more than `overlap_threshold`,
        keeping the higher-scored (then longer, then earlier);
-    5. **rank** the survivors by descending score (ties keep their post-dedup order).
+    6. **rank** the survivors by descending score (ties keep their post-dedup order).
 
     Every other field (score/reason/title/description/hashtags) is carried
     through unchanged via `model_copy`; only the times are adjusted.
@@ -173,14 +174,19 @@ def postprocess(
     adjusted: list[CandidateClip] = []
     for cand in candidates:
         start, end = snap_to_segments(cand.start, cand.end, segments, source_duration)
+        if end <= start:
+            # Raw inverted/zero-length range (e.g. start=90,end=30 or start==end):
+            # drop it now so clamp_duration can't extend it into a fabricated clip.
+            continue
         start, end = clamp_duration(
             start, end, source_duration, min_seconds=min_seconds, max_seconds=max_seconds
         )
         if end <= start:
-            continue  # nothing real left after snapping/clamping — drop it
+            continue  # nothing real left after clamping (source shorter than min) — drop it
         adjusted.append(cand.model_copy(update={"start": start, "end": end}))
 
     deduped = dedup_overlapping(adjusted, overlap_threshold=overlap_threshold)
 
-    # Stable sort by descending score — ties retain their relative (post-dedup) order.
+    # dedup_overlapping already returns clips in descending-score order; this sort
+    # is therefore idempotent, kept only as a defensive guarantee of the contract.
     return sorted(deduped, key=lambda c: c.score, reverse=True)

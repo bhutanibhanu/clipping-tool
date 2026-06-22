@@ -206,6 +206,74 @@ def test_detect_for_source_persist_false_returns_candidates_and_writes_nothing(
         assert session.scalar(select(func.count()).select_from(Clip)) == 0
 
 
+class _OutOfBoundsDetector:
+    """A detector that emits candidates straddling/exceeding the source duration.
+
+    Used to prove the persistence invariant: with the source duration set to
+    50 s below, the first clip is in bounds, the second overruns the end (and is
+    clamped to it), and the third lies entirely past it (and is skipped).
+    """
+
+    def detect(self, transcript: Transcript, *, max_clips: int = 5) -> list[CandidateClip]:
+        return [
+            CandidateClip(start=10.0, end=40.0, score=0.9, reason="in bounds", title="a"),
+            CandidateClip(start=30.0, end=90.0, score=0.7, reason="overruns end", title="b"),
+            CandidateClip(start=60.0, end=120.0, score=0.5, reason="fully past end", title="c"),
+        ]
+
+
+def test_detect_for_source_clamps_times_to_duration_and_skips_out_of_bounds(
+    engine: Engine, tmp_path: Path
+) -> None:
+    """Persisted rows are clamped to [0, duration]; a fully-out-of-bounds clip is skipped."""
+    with Session(engine) as session:
+        source_id = _seed_source_with_transcript(session, tmp_path)
+        source = session.get(Source, source_id)
+        assert source is not None
+        source.duration_seconds = 50.0  # shorter than candidates "b" and "c"
+        session.flush()
+
+        clips = detect_for_source(session, source_id, detector=_OutOfBoundsDetector())
+        session.commit()
+
+        persisted = list(session.scalars(select(Clip).where(Clip.source_id == source_id)))
+        # "c" (60..120) is entirely past the 50 s source → skipped. Two rows remain.
+        assert {c.title for c in persisted} == {"a", "b"}
+        by_title = {c.title: c for c in persisted}
+        # "a" is wholly in bounds → unchanged.
+        assert (by_title["a"].start_seconds, by_title["a"].end_seconds) == (10.0, 40.0)
+        # "b" overran the end → end clamped down to the duration.
+        assert (by_title["b"].start_seconds, by_title["b"].end_seconds) == (30.0, 50.0)
+        # Every persisted clip respects the [0, duration] invariant.
+        for clip in persisted:
+            assert 0.0 <= clip.start_seconds < clip.end_seconds <= 50.0
+        # The clamped "b" excerpt is derived from the clamped window, not the raw end.
+        assert by_title["b"].transcript_excerpt == excerpt_for(_SEGMENTS, 30.0, 50.0)
+        assert len(clips) == 2
+
+
+def test_detect_for_source_persists_as_is_when_duration_unknown(
+    engine: Engine, tmp_path: Path
+) -> None:
+    """With Source.duration_seconds None, times are persisted unchanged (no clamp)."""
+    with Session(engine) as session:
+        source_id = _seed_source_with_transcript(session, tmp_path)
+        source = session.get(Source, source_id)
+        assert source is not None
+        source.duration_seconds = None
+        session.flush()
+
+        clips = detect_for_source(session, source_id, detector=_OutOfBoundsDetector())
+        session.commit()
+
+        persisted = list(session.scalars(select(Clip).where(Clip.source_id == source_id)))
+        # No clamp, no skip — all three candidates persist with their raw times.
+        assert {c.title for c in persisted} == {"a", "b", "c"}
+        by_title = {c.title: c for c in persisted}
+        assert (by_title["c"].start_seconds, by_title["c"].end_seconds) == (60.0, 120.0)
+        assert len(clips) == 3
+
+
 # --- provider selector --------------------------------------------------------
 
 
