@@ -182,11 +182,10 @@ def test_detect_issues_one_post_with_expected_request_shape(transcript: Transcri
     assert body["model"] == Settings().openai_model
     # Two messages: system (Core-4) + user (transcript).
     assert [m["role"] for m in body["messages"]] == ["system", "user"]
-    # OpenAI function-calling shape, forcing our one tool.
-    assert body["tools"][0]["type"] == "function"
-    assert body["tools"][0]["function"]["name"] == "report_clips"
-    assert body["tools"][0]["function"]["parameters"]["required"] == ["candidates"]
-    assert body["tool_choice"] == {"type": "function", "function": {"name": "report_clips"}}
+    # JSON-schema structured-output shape, binding our shared candidate schema.
+    assert body["response_format"]["type"] == "json_schema"
+    assert body["response_format"]["json_schema"]["name"] == "report_clips"
+    assert body["response_format"]["json_schema"]["schema"]["required"] == ["candidates"]
     # OpenAI-compat endpoints accept temperature; it is always sent.
     assert body["temperature"] == Settings().detector_temperature
 

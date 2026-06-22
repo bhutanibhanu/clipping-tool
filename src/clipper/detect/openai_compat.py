@@ -9,11 +9,12 @@ canonical `ClaudeDetector`, so the two providers can never silently drift. The
 local model is **not** the production path — production stays cloud-Claude on the
 8 GB Air; a local-model eval only sketches quality and exercises the plumbing.
 
-It mirrors `claude.py`'s shape: one request carries the whole transcript and
-forces a single function call (``report_clips``) whose ``parameters`` is the
-shared ``CANDIDATE_TOOL_SCHEMA``; we read the candidates out, validate each into
-a `CandidateClip`, run the shared `postprocess`, and return the top
-``max_clips``.
+It mirrors `claude.py`'s shape: one request carries the whole transcript and asks
+for structured output matching the shared ``CANDIDATE_TOOL_SCHEMA`` (via
+``response_format`` JSON-schema — local models follow that far more reliably than
+forced function-calling, which made them fill the wrong field); we read the
+candidates out, validate each into a `CandidateClip`, run the shared
+`postprocess`, and return the top ``max_clips``.
 
 Robustness contract (matches `claude.py` and the T3B spec):
   * Empty ``base_url`` -> `DetectorConfigError` (a real misconfiguration). There
@@ -22,10 +23,10 @@ Robustness contract (matches `claude.py` and the T3B spec):
     all-invalid items -> ``[]`` + a logged warning. The model (or a flaky local
     server) being sloppy is a quality problem, not an exception.
 
-Parsing is deliberately Ollama-friendly: the primary path reads
-``choices[0].message.tool_calls[0].function.arguments`` (a JSON *string*), and a
-fallback extracts ``{"candidates": [...]}`` from ``message.content`` for local
-models that emit the JSON as plain content instead of a tool call.
+Parsing is deliberately tolerant: the primary path extracts
+``{"candidates": [...]}`` from ``message.content`` (where JSON-schema output
+lands), with a fallback that reads ``tool_calls[0].function.arguments`` for
+endpoints that return a tool call instead.
 
 Testability: the HTTP layer is injectable. Tests pass a fake ``httpx.Client``
 whose ``.post`` returns a canned, OpenAI-shaped response, so nothing here touches
@@ -57,10 +58,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _TOOL_NAME = "report_clips"
-_TOOL_DESCRIPTION = (
-    "Report the clip-worthy moments you found in the transcript, ranked "
-    "best-first, as structured candidates."
-)
 # Local models on CPU can be slow; a generous read timeout keeps a real Ollama
 # run from spuriously failing while still bounding a hung server.
 _TIMEOUT_SECONDS = 120.0
@@ -135,17 +132,20 @@ class OpenAICompatDetector:
                 {"role": "system", "content": build_system_prompt(max_clips)},
                 {"role": "user", "content": build_user_prompt(transcript)},
             ],
-            "tools": [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": _TOOL_NAME,
-                        "description": _TOOL_DESCRIPTION,
-                        "parameters": CANDIDATE_TOOL_SCHEMA,
-                    },
-                }
-            ],
-            "tool_choice": {"type": "function", "function": {"name": _TOOL_NAME}},
+            # Structured output via JSON-schema response_format. Local models
+            # (Ollama qwen2.5) follow this reliably; forced function-calling made
+            # them fill the wrong field (echoing the transcript). Same shared
+            # CANDIDATE_TOOL_SCHEMA; the model emits the JSON as message content,
+            # which `_extract_candidates` reads. (tool_calls parsing stays as a
+            # defensive fallback for endpoints that return a tool call instead.)
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": _TOOL_NAME,
+                    "schema": CANDIDATE_TOOL_SCHEMA,
+                    "strict": True,
+                },
+            },
             # Unlike claude-opus-4-8, OpenAI-compatible endpoints accept
             # `temperature`, so we always send it (0.0 default = deterministic).
             "temperature": self._settings.detector_temperature,

@@ -88,7 +88,7 @@ Legend: `[ ]` todo · `[>]` in progress · `[x]` done (short sha) · `[!]` block
   - WHEN the response has no tool call / malformed JSON / a transport error, the system SHALL return `[]` and log a warning, and SHALL NOT raise.
   - The provider SHALL NOT be used in CI tests against a live endpoint.
 - **Tests:** unit only — parse a **canned** OpenAI-style `tool_calls` response → `CandidateClip[]` (post-processed); malformed / no-tool-call → `[]`; transport error (monkeypatched httpx) → `[]`. No network in CI.
-- **Status:** done (16 tests; httpx, shared prompt/schema, tool-call + content-JSON fallback, injectable client; defaults to Ollama qwen2.5:7b)
+- **Status:** done (16 tests; httpx, shared prompt/schema, JSON-schema `response_format` + content/tool-call parse, injectable client; **LIVE-VERIFIED** against Ollama qwen2.5:7b — found 4/4 planted clips, skipped filler. Note: forced function-calling made the 7B model fill the wrong field, so structured output uses `response_format` json_schema.)
 
 ### T4 — Detection persistence + `clipper detect <source_id>`
 - **Goal:** Run detection on an ingested source and persist the ranked candidates as pending `Clip` rows, exposed as a CLI command with selectable provider.
