@@ -8,7 +8,7 @@ processing (`ingest <source_id>`).
 
 ## Task list
 - [x] T1 — Consent records: `creator add` + `permission grant` (a45bb3b)
-- [ ] T2 — Permission-gated `source add`
+- [x] T2 — Permission-gated `source add` (02c88b0)
 - [ ] T3 — ffprobe probe + audio extraction
 - [ ] T4 — faster-whisper transcriber + transcript persistence
 - [ ] T5 — `clipper ingest <source_id>` pipeline wiring
@@ -40,7 +40,7 @@ Legend: `[ ]` todo · `[>]` in progress · `[x]` done (short sha) · `[!]` block
   - WHEN the creator has no active PermissionRecord, the system SHALL raise `PermissionRequiredError`, exit non-zero, and create no Source row.
   - WHEN `<file>` does not exist, the system SHALL exit non-zero and create no Source row.
 - **Tests:** gated allow (active) / refuse (none, revoked); missing file refused; created Source references the correct permission_id.
-- **Status:** todo
+- **Status:** done (02c88b0)
 
 ### T3 — ffprobe probe + audio extraction
 - **Goal:** Probe duration/resolution and extract a 16 kHz mono WAV for transcription, on top of the Phase 0 ffmpeg wrapper.
