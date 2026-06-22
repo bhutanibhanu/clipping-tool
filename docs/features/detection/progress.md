@@ -27,7 +27,7 @@ on the Air.** A free Ollama eval de-risks T6 but does not replace it: the real b
 
 ## Task list
 - [x] T1 — ADR-0001: detection provider architecture
-- [ ] T2 — Postprocess (pure: snap + clamp + drop + dedup)
+- [x] T2 — Postprocess (pure: snap + clamp + drop + dedup)
 - [ ] T3 — Claude `Detector` provider + Core-4 prompt
 - [ ] T3B — OpenAI-compatible provider (free local/dev testing via Ollama)
 - [ ] T4 — Detection persistence + `clipper detect <source_id>`
@@ -62,7 +62,7 @@ Legend: `[ ]` todo · `[>]` in progress · `[x]` done (short sha) · `[!]` block
   - WHEN two candidates' overlap ratio (intersection ÷ shorter candidate's duration) exceeds 0.5, the system SHALL keep the higher-scored one and drop the other.
   - WHEN postprocessing completes, the system SHALL return the surviving candidates ranked by descending `score`.
 - **Tests:** table-driven unit tests per rule + edges — start-of-file, end-of-file, exact-boundary snap, full vs partial (>50% and <50%) overlap, equal-score overlap tiebreak, `end≤start` drop. Pure functions, no I/O, no model.
-- **Status:** todo
+- **Status:** done (29 tests; half-open boundary snapping, strict >0.5 overlap, deterministic tiebreak)
 
 ### T3 — Claude `Detector` provider + Core-4 prompt
 - **Goal:** Implement the `Detector` protocol against Claude with one structured tool-use request over the full transcript, optimizing for the Core-4 rubric.
