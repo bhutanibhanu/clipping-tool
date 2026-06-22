@@ -88,6 +88,41 @@ def excerpt_for(segments: Sequence[Segment], start: float, end: float) -> str:
     return " ".join(texts)
 
 
+def detect_candidates_for_source(
+    session: Session,
+    source_id: int,
+    *,
+    detector: Detector,
+    max_clips: int | None = None,
+) -> tuple[list[CandidateClip], list[Segment]]:
+    """Load ``source_id``'s transcript and return ranked candidates + its segments.
+
+    The shared core of both the persist path (`detect_for_source`) and the eval
+    path (`clipper detect --eval`): it resolves the `Source`
+    (``SourceNotFoundError`` if absent), refuses with ``TranscriptMissingError``
+    when there is no ``transcript_path`` (ingest hasn't run), loads the
+    `Transcript`, and calls ``detector.detect(transcript, max_clips=...)``
+    (providers already postprocess/rank). It returns the raw `CandidateClip`s
+    **and** the transcript's segments so callers can derive excerpts (via
+    `excerpt_for`) without loading the transcript a second time. Persists
+    nothing.
+    """
+    if max_clips is None:
+        max_clips = get_settings().detector_max_clips
+
+    source = session.get(Source, source_id)
+    if source is None:
+        raise SourceNotFoundError(f"source {source_id} not found")
+    if not source.transcript_path:
+        raise TranscriptMissingError(
+            f"source {source_id} has no transcript; run `clipper ingest {source_id}` first"
+        )
+
+    transcript = load_transcript(Path(source.transcript_path))
+    candidates = detector.detect(transcript, max_clips=max_clips)
+    return candidates, transcript.segments
+
+
 def detect_for_source(
     session: Session,
     source_id: int,
@@ -111,19 +146,9 @@ def detect_for_source(
     them, and returns the `Clip` rows. When ``persist`` is false (the eval path)
     it returns the `CandidateClip`s unchanged and writes nothing.
     """
-    if max_clips is None:
-        max_clips = get_settings().detector_max_clips
-
-    source = session.get(Source, source_id)
-    if source is None:
-        raise SourceNotFoundError(f"source {source_id} not found")
-    if not source.transcript_path:
-        raise TranscriptMissingError(
-            f"source {source_id} has no transcript; run `clipper ingest {source_id}` first"
-        )
-
-    transcript = load_transcript(Path(source.transcript_path))
-    candidates = detector.detect(transcript, max_clips=max_clips)
+    candidates, segments = detect_candidates_for_source(
+        session, source_id, detector=detector, max_clips=max_clips
+    )
 
     if not persist:
         return candidates
@@ -131,7 +156,7 @@ def detect_for_source(
     clips: list[Clip] = []
     for cand in candidates:
         clip = Clip(
-            source_id=source.id,
+            source_id=source_id,
             start_seconds=cand.start,
             end_seconds=cand.end,
             status=ClipStatus.pending,
@@ -140,7 +165,7 @@ def detect_for_source(
             title=cand.title,
             description=cand.description,
             hashtags=list(cand.hashtags),
-            transcript_excerpt=excerpt_for(transcript.segments, cand.start, cand.end),
+            transcript_excerpt=excerpt_for(segments, cand.start, cand.end),
         )
         session.add(clip)
         clips.append(clip)

@@ -31,7 +31,7 @@ on the Air.** A free Ollama eval de-risks T6 but does not replace it: the real b
 - [x] T3 — Claude `Detector` provider + Core-4 prompt
 - [x] T3B — OpenAI-compatible provider (free local/dev testing via Ollama)
 - [x] T4 — Detection persistence + `clipper detect <source_id>`
-- [ ] T5 — Eval harness (`clipper detect --eval`)
+- [x] T5 — Eval harness (`clipper detect --eval`)
 - [ ] T6 — 🚦 GO/NO-GO gate run (human judgment, on the 8 GB Air)
 
 Legend: `[ ]` todo · `[>]` in progress · `[x]` done (short sha) · `[!]` blocked
@@ -112,7 +112,7 @@ Legend: `[ ]` todo · `[>]` in progress · `[x]` done (short sha) · `[!]` block
   - The system SHALL surface the active `PROMPT_VERSION` and the provider/model used so eval output is attributable.
   - `docs/features/detection/eval.md` SHALL contain the gate protocol (Core-4 rubric, the ≥ 3-of-5 threshold, the requirement that the real gate transcript come from a ~1-hr ingest on the 8 GB Air) and an empty results-log table keyed by `PROMPT_VERSION` + provider.
 - **Tests:** smoke-test the formatter against `MockDetector` output — asserts 5 rows render with timecodes, score, title, and excerpt. No network.
-- **Status:** todo
+- **Status:** done (7 tests; `format_eval_report` pure formatter, `detect_candidates_for_source` helper feeds both paths, `--eval` persists nothing — repeated-run test proves it; eval.md gate protocol written)
 
 ### T6 — 🚦 GO/NO-GO gate run (human judgment)
 - **Goal:** Prove the detection bet on real authorized content before any render work begins.
