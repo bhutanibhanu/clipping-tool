@@ -49,7 +49,7 @@ uv pip install -e ".[dev,transcribe]"            # already installed in .venv
 - **The bet itself:** detection quality on real content with Opus is unproven until T6 (by design — the eval exists to measure it cheaply before render work).
 - **Live Claude path** is exercised only manually (no key in CI). Parsing is defensive (malformed → `[]`), but the exact Opus tool-use response shape is validated only at T6.
 - **`temperature` on Opus 4.8:** the model rejects the param; provider omits it at the 0.0 default (forwards only if >0). If a future model needs it, revisit.
-- Greedy dedup in postprocess is order-sensitive on 3-way overlaps (rare with ~10 candidates); ranking still applies.
+- Dedup is globally correct (sorts by score/duration/start, rejects any candidate conflicting with any already-kept clip) — an earlier greedy version was 3-way-overlap order-sensitive; fixed during QA.
 
 ## Open questions
 - Final prompt wording is the iterable artifact (versioned by `PROMPT_VERSION`); T6 drives it.

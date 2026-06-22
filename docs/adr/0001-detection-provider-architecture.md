@@ -39,10 +39,11 @@ Detection must not blow that budget.
    a sampling knob — which is also exactly what those models require.
 
 4. **Postprocess is shared, pure functions** (`detect/postprocess.py`):
-   snap rough times to transcript segment boundaries → clamp to 20–60 s → drop
-   invalid → dedup candidates overlapping > 50% (keep higher score) → rank by
-   score. Provider-independent and table-testable; every provider routes through
-   it so model sloppiness never reaches the database.
+   drop invalid (reversed/zero-length) ranges → snap rough times to transcript
+   segment boundaries → clamp to 20–60 s → drop degenerate → dedup candidates
+   overlapping > 50% (keep higher score, globally) → rank by score.
+   Provider-independent and table-testable; every provider routes through it so
+   model sloppiness never reaches the database.
 
 5. **`transcript_excerpt` is derived locally**, by slicing the transcript
    segments overlapping `[start, end]` — never echoed by the model. The stored

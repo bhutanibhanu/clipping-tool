@@ -101,7 +101,7 @@ ingested Source (has transcript_path)
        │    ├─ build prompt (full transcript + Core-4 instructions)
        │    ├─ one structured-output (tool-use) request → raw candidates
        │    ├─ postprocess(raw, segments, source_duration):
-       │    │     snap → clamp(20–60s) → drop(end≤start) → dedup(>50% overlap)
+       │    │     drop-invalid → snap → clamp(20–60s) → drop(end≤start) → dedup(>50% overlap)
        │    └─ rank by score desc; take top max_clips
        ├─ derive transcript_excerpt per clip (slice segments in [start,end])
        └─ persist pending Clip rows  (status=pending)

@@ -58,3 +58,13 @@ Both reviewers flag the **postprocess correctness** issues; Codex (correctly) ra
 - Accepted/deferred: `detector_fallback_model` dead config (pre-existing scaffold — left, noted); openai_compat `strict`+brace-span (dev-only Ollama path, proven working — noted; cloud-strict-schema is a later concern).
 
 Re-gate after fixes, then re-run Codex for a SHIP verdict before opening the PR.
+
+---
+
+## Re-QA after fixes (autonomous loop)
+
+- **Fix `1a0a438`** (drop-invalid + globally-correct dedup + service duration-clamp) → **Codex round-2:** dedup blocker RESOLVED; flagged the invalid-range fix as only *partial* — snapping widens times outward, so a raw zero-length `(50,50)` / reversed `(60,50)` could still snap to `(0,100)` and survive. **NO_SHIP.**
+- **Fix `8006f7b`** (drop raw `end<=start` BEFORE snapping; + mid-segment regression tests) → **Codex round-3: SHIP.** Both prior blockers confirmed resolved; Codex ran `pytest -q` → 146 passed. Only non-blocking nits left (stale doc pipeline-order references), fixed in the same pass.
+
+**Final QA state: Verifier SHIP + Codex SHIP. Gate green (146 tests). Approved for ship.**
+Outstanding: **T6** — the human go/no-go gate on a real Opus run over an Air-ingested ~1-hr transcript (blocks Phase 3, not this code).
