@@ -58,6 +58,7 @@ select = ["E", "F", "I", "UP", "B", "W"]
 addopts = "-q"
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = ["integration: tests that shell out to ffmpeg/whisper; skipped when unavailable"]
 
 [tool.mypy]
 python_version = "3.11"
