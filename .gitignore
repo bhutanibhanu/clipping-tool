@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Virtual envs / tooling caches
+.venv/
+venv/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Secrets & local config
+.env
+
+# Local-first storage: source videos, work dirs, transcripts, outputs, db
+storage/
+*.db
+
+# Downloaded model weights
+models/
+
+# macOS
+.DS_Store
+
+# Claude Code local (per-machine) settings
+.claude/settings.local.json

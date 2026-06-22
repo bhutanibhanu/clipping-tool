@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>clipper</title>
+    <script src="https://unpkg.com/htmx.org@2.0.3"></script>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem; color: #222; }
+      code { background: #f4f1ea; padding: 0.1rem 0.3rem; border-radius: 3px; }
+      .muted { color: #777; }
+    </style>
+  </head>
+  <body>
+    <h1>clipper <span class="muted">v{{ version }}</span></h1>
+    <p>Local-first AI clipping tool — Phase 0 skeleton.</p>
+    <p class="muted">
+      The review UI (clip list, video playback, approve/reject) is built in Phase 4.
+      For now this confirms the web layer is wired up. Health check:
+      <code>GET /health</code>.
+    </p>
+  </body>
+</html>
