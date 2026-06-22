@@ -26,7 +26,7 @@ on the Air.** A free Ollama eval de-risks T6 but does not replace it: the real b
 `claude-opus-4-8`'s judgment specifically.
 
 ## Task list
-- [ ] T1 — ADR-0001: detection provider architecture
+- [x] T1 — ADR-0001: detection provider architecture
 - [ ] T2 — Postprocess (pure: snap + clamp + drop + dedup)
 - [ ] T3 — Claude `Detector` provider + Core-4 prompt
 - [ ] T3B — OpenAI-compatible provider (free local/dev testing via Ollama)
@@ -49,7 +49,7 @@ Legend: `[ ]` todo · `[>]` in progress · `[x]` done (short sha) · `[!]` block
   - The ADR SHALL record each decision with its rationale: single-shot whole-transcript detection (standard 200k context suffices for the 1-hr target; 1M only for multi-hour); structured output via Claude **tool-use** (a forced tool call whose `input_schema` mirrors `CandidateClip`); `temperature=0` for repeatable eval comparison; postprocess (snap/clamp/dedup) as **shared pure functions**; `transcript_excerpt` **derived locally**, not model-echoed; that `anthropic` is **already a core dependency** (no `[detect]` extra); and the **two-provider design** (canonical cloud `ClaudeDetector` + an `OpenAICompatDetector` for free local/dev testing, both behind `Detector`, sharing prompt + postprocess; local model is dev-only, production stays cloud-Claude on the Air).
   - The ADR SHALL NOT contradict ADR-0000 or `CLAUDE.md`.
 - **Tests:** none — documentation.
-- **Status:** todo
+- **Status:** done
 
 ### T2 — Postprocess (pure: snap + clamp + drop + dedup)
 - **Goal:** Turn a detector's raw, rough time-ranges into clean, ranked, non-overlapping candidates via pure functions — independent of any provider.
