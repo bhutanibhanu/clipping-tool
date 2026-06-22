@@ -16,6 +16,7 @@ import typer
 from clipper import __version__
 from clipper.catalog import SourceFileNotFoundError, create_creator, register_source
 from clipper.config import get_settings
+from clipper.db.models import JobStatus
 from clipper.db.session import session_scope
 from clipper.media.ffmpeg import ffmpeg_available
 from clipper.permissions.service import (
@@ -23,6 +24,7 @@ from clipper.permissions.service import (
     PermissionRequiredError,
     grant_permission,
 )
+from clipper.pipeline.jobs import SourceNotFoundError, run_ingest
 
 app = typer.Typer(
     help="clipper — local-first AI clipping tool.",
@@ -117,6 +119,38 @@ def source_add(
         raise typer.Exit(code=1) from exc
     typer.echo(f"Created source {source_id} for creator {creator}")
     typer.echo(f"  file: {recorded_path}")
+
+
+@app.command()
+def ingest(
+    source_id: int = typer.Argument(..., help="Id of the registered source to ingest."),
+) -> None:
+    """Run the ingest pipeline for a source: probe -> audio -> transcribe -> persist.
+
+    Synchronous and single-worker. Refuses (exit 1) if the source is unknown or
+    its creator lacks an active permission; if a stage fails the Job is recorded
+    as ``error`` and the failing stage is printed (exit 1). On success prints the
+    source's duration and transcript path.
+    """
+    try:
+        with session_scope() as session:
+            job = run_ingest(session, source_id)
+            # Read everything we report INSIDE the session, before it closes.
+            status = job.status
+            stage = job.stage
+            error = job.error
+            duration = job.source.duration_seconds
+            transcript_path = job.source.transcript_path
+    except (PermissionRequiredError, SourceNotFoundError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    if status is JobStatus.error:
+        typer.echo(f"Error: ingest failed at stage '{stage}': {error}", err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo(f"Ingested source {source_id} (duration={duration}s)")
+    typer.echo(f"  transcript: {transcript_path}")
 
 
 def main() -> None:
