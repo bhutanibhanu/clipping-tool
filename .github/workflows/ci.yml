@@ -19,9 +19,10 @@ jobs:
           python-version: "3.13"
 
       - name: Install project (with dev extras)
-        run: |
-          uv venv
-          uv pip install -e ".[dev]"
+        # setup-uv already provisions a .venv (VIRTUAL_ENV is set); install into it
+        # (no `uv venv` — it errors if .venv exists; no `--system` — uv rejects that
+        # against its managed Python).
+        run: uv pip install -e ".[dev]"
 
       - name: Lint (ruff)
         run: .venv/bin/ruff check .
