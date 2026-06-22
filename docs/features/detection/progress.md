@@ -28,7 +28,7 @@ on the Air.** A free Ollama eval de-risks T6 but does not replace it: the real b
 ## Task list
 - [x] T1 — ADR-0001: detection provider architecture
 - [x] T2 — Postprocess (pure: snap + clamp + drop + dedup)
-- [ ] T3 — Claude `Detector` provider + Core-4 prompt
+- [x] T3 — Claude `Detector` provider + Core-4 prompt
 - [ ] T3B — OpenAI-compatible provider (free local/dev testing via Ollama)
 - [ ] T4 — Detection persistence + `clipper detect <source_id>`
 - [ ] T5 — Eval harness (`clipper detect --eval`)
@@ -76,7 +76,7 @@ Legend: `[ ]` todo · `[>]` in progress · `[x]` done (short sha) · `[!]` block
   - WHEN the response carries no tool call, or malformed candidate JSON, the system SHALL return `[]` and log a warning, and SHALL NOT raise.
   - The request SHALL use `Settings.detector_temperature` (default `0.0`) and `Settings.detector_model`.
 - **Tests:** unit only — parse a **canned** tool-use response → `CandidateClip[]` (post-processed); unset key → config error; no-tool-call / malformed → `[]`. **No live API call — the network must not be touched in CI**; the live path is exercised in T3B (free) and T6 (Opus).
-- **Status:** todo
+- **Status:** done (14 tests; injectable client, forced tool-use, anthropic 0.111; temperature omitted for Opus 4.8 per claude-api)
 
 ### T3B — OpenAI-compatible provider (free local/dev testing)
 - **Goal:** A second `Detector` that runs against any OpenAI-compatible chat-completions endpoint (Ollama locally for free, or a keyed cloud endpoint) so the full detection path can be exercised end-to-end at zero cost — without touching the canonical Claude provider.

@@ -29,9 +29,14 @@ Detection must not blow that budget.
    `CandidateClip[]`, rather than parsing free-text JSON. `prompt.py` owns the
    Core-4 instructions and a provider-agnostic candidate JSON schema.
 
-3. **`temperature = 0`.** Detection runs deterministically so a prompt change can
-   be attributed to the prompt, not sampling noise — essential for the iterative
-   go/no-go eval.
+3. **Deterministic by default; `temperature` handled conditionally.**
+   `detector_temperature` defaults to `0.0`. The canonical `claude-opus-4-8` does
+   **not** accept a `temperature` parameter (per the claude-api reference — it was
+   removed on Opus 4.7/4.8 and Fable), so the Claude provider **omits**
+   `temperature` at the default and forwards it only when explicitly set `> 0`
+   (where it still applies to the OpenAI-compatible provider). Determinism for the
+   iterative eval therefore rests on the tight prompt + forced tool-use rather than
+   a sampling knob — which is also exactly what those models require.
 
 4. **Postprocess is shared, pure functions** (`detect/postprocess.py`):
    snap rough times to transcript segment boundaries → clamp to 20–60 s → drop

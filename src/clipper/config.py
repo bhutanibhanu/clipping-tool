@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     # Detection (Phase 2+): Claude behind the Detector protocol.
     detector_model: str = "claude-opus-4-8"
     detector_fallback_model: str = "claude-sonnet-4-6"
+    # Sampling temperature for detection. 0.0 = deterministic eval (ADR-0001 §3).
+    # NOTE: claude-opus-4-7/4.8 (and Fable) REJECT the `temperature` param with a
+    # 400, so the Claude provider only forwards it when > 0; at the 0.0 default it
+    # is omitted (the prompt, not a sampling knob, carries determinism there). The
+    # value still applies to OpenAI-compatible/local providers (T3B).
+    detector_temperature: float = 0.0
 
     # Transcription (Phase 1+): faster-whisper, CPU-only on Mac.
     # `small` is the accuracy floor that fits the 8 GB Air; bump on the Pro.
