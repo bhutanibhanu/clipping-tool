@@ -1,6 +1,6 @@
 {
   "slug": "ingest-transcribe",
-  "phase": "qa",
+  "phase": "approved",
   "branch": "feat/ingest-transcribe",
   "worktree": "/Users/ray/dev/clipping tool-ingest-transcribe",
   "updated": "2026-06-22T00:00:00Z"
