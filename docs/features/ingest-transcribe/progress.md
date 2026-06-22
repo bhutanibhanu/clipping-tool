@@ -9,7 +9,7 @@ processing (`ingest <source_id>`).
 ## Task list
 - [x] T1 — Consent records: `creator add` + `permission grant` (a45bb3b)
 - [x] T2 — Permission-gated `source add` (02c88b0)
-- [ ] T3 — ffprobe probe + audio extraction
+- [x] T3 — ffprobe probe + audio extraction (77f986c)
 - [ ] T4 — faster-whisper transcriber + transcript persistence
 - [ ] T5 — `clipper ingest <source_id>` pipeline wiring
 
@@ -51,7 +51,7 @@ Legend: `[ ]` todo · `[>]` in progress · `[x]` done (short sha) · `[!]` block
   - WHEN `extract_audio(src, dst)` runs, the system SHALL produce a 16 kHz mono WAV at `dst` via an argument-list ffmpeg call (no shell string).
   - WHEN ffmpeg/ffprobe is absent, both SHALL raise `FFmpegNotFoundError`.
 - **Tests:** unit — `probe` field-mapping from a captured ffprobe JSON string (no ffmpeg needed). Integration — generate a ~10 s `lavfi` test clip, probe + extract, assert WAV exists with expected sample rate; `@pytest.mark.integration`, skipped when ffmpeg is unavailable.
-- **Status:** todo
+- **Status:** done (77f986c)
 
 ### T4 — faster-whisper transcriber + transcript persistence
 - **Goal:** Implement the `Transcriber` protocol with faster-whisper (model/compute from config, `small`/`int8` default) and persist the transcript as JSON, setting `Source.transcript_path`.
