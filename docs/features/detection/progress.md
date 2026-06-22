@@ -29,7 +29,7 @@ on the Air.** A free Ollama eval de-risks T6 but does not replace it: the real b
 - [x] T1 — ADR-0001: detection provider architecture
 - [x] T2 — Postprocess (pure: snap + clamp + drop + dedup)
 - [x] T3 — Claude `Detector` provider + Core-4 prompt
-- [ ] T3B — OpenAI-compatible provider (free local/dev testing via Ollama)
+- [x] T3B — OpenAI-compatible provider (free local/dev testing via Ollama)
 - [ ] T4 — Detection persistence + `clipper detect <source_id>`
 - [ ] T5 — Eval harness (`clipper detect --eval`)
 - [ ] T6 — 🚦 GO/NO-GO gate run (human judgment, on the 8 GB Air)
@@ -88,7 +88,7 @@ Legend: `[ ]` todo · `[>]` in progress · `[x]` done (short sha) · `[!]` block
   - WHEN the response has no tool call / malformed JSON / a transport error, the system SHALL return `[]` and log a warning, and SHALL NOT raise.
   - The provider SHALL NOT be used in CI tests against a live endpoint.
 - **Tests:** unit only — parse a **canned** OpenAI-style `tool_calls` response → `CandidateClip[]` (post-processed); malformed / no-tool-call → `[]`; transport error (monkeypatched httpx) → `[]`. No network in CI.
-- **Status:** todo
+- **Status:** done (16 tests; httpx, shared prompt/schema, tool-call + content-JSON fallback, injectable client; defaults to Ollama qwen2.5:7b)
 
 ### T4 — Detection persistence + `clipper detect <source_id>`
 - **Goal:** Run detection on an ingested source and persist the ranked candidates as pending `Clip` rows, exposed as a CLI command with selectable provider.
