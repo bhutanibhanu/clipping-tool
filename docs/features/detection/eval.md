@@ -111,4 +111,5 @@ gate verdict for a row is PASS when `postable /5` ≥ 3, otherwise REVISE.
 
 | date | prompt_version | provider/model | source (duration) | postable /5 | verdict | notes |
 | ---- | -------------- | -------------- | ----------------- | ----------- | ------- | ----- |
+| 2026-06-22 | detect-v1 | openai-compat / qwen2.5:7b | synthetic demo (214 s) | n/a — dev sketch | DEV-SKETCH | Free Ollama plumbing validated end-to-end via `clipper detect --eval`: 5 candidates, correctly surfaced the hook / "one more email" insight / productivity hot-take / emotional beat over the filler. 7B time precision imperfect (hot-take start landed one segment late) — expected for a small local model; **not a gate verdict.** The real gate is `--provider claude` on a real ~1-hr Air-ingested transcript. |
 |      |                |                |                   |             |         |       |
