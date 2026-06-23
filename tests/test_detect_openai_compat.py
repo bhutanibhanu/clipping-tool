@@ -19,6 +19,7 @@ import httpx
 import pytest
 
 from clipper.config import Settings
+from clipper.detect import openai_compat
 from clipper.detect.base import CandidateClip, Detector, DetectorConfigError
 from clipper.detect.openai_compat import OpenAICompatDetector
 from clipper.transcribe.base import Segment, Transcript
@@ -75,6 +76,27 @@ class FakeClient:
         if isinstance(self._response, Exception):
             raise self._response
         return self._response
+
+
+class FakeSequenceClient:
+    """Returns queued responses in order; an `Exception` entry is raised instead.
+
+    Mirrors `FakeClient` but pops one response per ``.post`` so a test can model a
+    flaky endpoint (e.g. 503, then a good response). Recording ``.calls`` lets a
+    test assert exactly how many requests the retry loop issued. Exhausting the
+    queue is a test-construction error (``IndexError``).
+    """
+
+    def __init__(self, responses: list[Any]) -> None:
+        self._responses = list(responses)
+        self.calls: list[dict[str, Any]] = []
+
+    def post(self, url: str, *, json: Any = None, headers: Any = None) -> Any:
+        self.calls.append({"url": url, "json": json, "headers": headers})
+        item = self._responses.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
 
 
 def _tool_call_response(candidates: list[dict[str, Any]]) -> FakeResponse:
@@ -239,18 +261,88 @@ def test_malformed_tool_call_arguments_returns_empty(transcript: Transcript) -> 
     assert detector.detect(transcript, max_clips=5) == []
 
 
-def test_transport_error_returns_empty(transcript: Transcript) -> None:
-    # The fake client raises httpx.HTTPError on .post -> [] and no raise.
-    detector, _ = _detector_with(httpx.ConnectError("connection refused"))
+def test_transport_error_returns_empty(
+    transcript: Transcript, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A transport error is transient, so it is retried to exhaustion -> [].
+    monkeypatch.setattr(openai_compat.time, "sleep", lambda _seconds: None)
+    detector, client = _detector_with(httpx.ConnectError("connection refused"))
 
     assert detector.detect(transcript, max_clips=5) == []
+    assert len(client.calls) == openai_compat._MAX_ATTEMPTS
 
 
-def test_non_2xx_status_returns_empty(transcript: Transcript) -> None:
-    # raise_for_status() raises HTTPStatusError (an httpx.HTTPError) -> [].
-    detector, _ = _detector_with(FakeResponse({}, status_code=500))
+def test_non_2xx_status_returns_empty(
+    transcript: Transcript, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A non-retryable status (404) -> [] immediately, with no retry.
+    monkeypatch.setattr(openai_compat.time, "sleep", lambda _seconds: None)
+    detector, client = _detector_with(FakeResponse({}, status_code=404))
 
     assert detector.detect(transcript, max_clips=5) == []
+    assert len(client.calls) == 1
+
+
+def _sequence_detector(responses: list[Any]) -> tuple[OpenAICompatDetector, FakeSequenceClient]:
+    client = FakeSequenceClient(responses)
+    return OpenAICompatDetector(client=client, settings=Settings()), client
+
+
+def test_retryable_status_then_success_retries_once(
+    transcript: Transcript, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 503 (free-tier throttle) then a good response -> succeeds on the 2nd call.
+    monkeypatch.setattr(openai_compat.time, "sleep", lambda _seconds: None)
+    detector, client = _sequence_detector(
+        [FakeResponse({}, status_code=503), _tool_call_response(_candidate_dicts())]
+    )
+
+    clips = detector.detect(transcript, max_clips=5)
+
+    assert len(clips) == 2
+    assert clips[0].score == 0.9
+    assert len(client.calls) == 2  # retried exactly once
+
+
+def test_all_retryable_statuses_exhaust_attempts(
+    transcript: Transcript, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Persistent 503 -> [] after exactly _MAX_ATTEMPTS calls (retries capped).
+    monkeypatch.setattr(openai_compat.time, "sleep", lambda _seconds: None)
+    detector, client = _sequence_detector(
+        [FakeResponse({}, status_code=503) for _ in range(openai_compat._MAX_ATTEMPTS + 2)]
+    )
+
+    assert detector.detect(transcript, max_clips=5) == []
+    assert len(client.calls) == openai_compat._MAX_ATTEMPTS
+
+
+def test_non_retryable_status_is_not_retried(
+    transcript: Transcript, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # HTTP 400 is a client error: fail immediately even if a good response is queued.
+    monkeypatch.setattr(openai_compat.time, "sleep", lambda _seconds: None)
+    detector, client = _sequence_detector(
+        [FakeResponse({}, status_code=400), _tool_call_response(_candidate_dicts())]
+    )
+
+    assert detector.detect(transcript, max_clips=5) == []
+    assert len(client.calls) == 1  # no retry
+
+
+def test_transport_error_then_success_retries(
+    transcript: Transcript, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A one-off connect error is retried, then the good response succeeds.
+    monkeypatch.setattr(openai_compat.time, "sleep", lambda _seconds: None)
+    detector, client = _sequence_detector(
+        [httpx.ConnectError("connection refused"), _tool_call_response(_candidate_dicts())]
+    )
+
+    clips = detector.detect(transcript, max_clips=5)
+
+    assert len(clips) == 2
+    assert len(client.calls) == 2
 
 
 def test_all_items_invalid_returns_empty(transcript: Transcript) -> None:

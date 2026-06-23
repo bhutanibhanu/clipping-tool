@@ -19,6 +19,10 @@ candidates out, validate each into a `CandidateClip`, run the shared
 Robustness contract (matches `claude.py` and the T3B spec):
   * Empty ``base_url`` -> `DetectorConfigError` (a real misconfiguration). There
     is no missing-key path: Ollama needs no key, so a blank key is valid.
+  * Transient failures (a transport error, or a retryable status — 429/5xx, the
+    free-tier throttle/gateway codes) are retried up to ``_MAX_ATTEMPTS`` times
+    with exponential backoff before giving up; a non-retryable status (e.g. a
+    4xx client error) is not retried.
   * Transport error, non-2xx status, no parseable tool call / content JSON, or
     all-invalid items -> ``[]`` + a logged warning. The model (or a flaky local
     server) being sloppy is a quality problem, not an exception.
@@ -37,6 +41,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import TYPE_CHECKING, Any, Protocol
 
 import httpx
@@ -61,6 +66,13 @@ _TOOL_NAME = "report_clips"
 # Local models on CPU can be slow; a generous read timeout keeps a real Ollama
 # run from spuriously failing while still bounding a hung server.
 _TIMEOUT_SECONDS = 120.0
+
+# Transient-failure retry. Free tiers (Gemini) throttle with 503; API gateways
+# return 502/504; 429 is rate-limit. These are worth a quick retry; a 4xx like
+# 400/404 is a real client error and is not retried.
+_RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+_MAX_ATTEMPTS = 3  # the first try plus up to two retries
+_RETRY_BACKOFF_SECONDS = 1.0  # exponential: 1s, then 2s
 
 
 class _PostClient(Protocol):
@@ -151,20 +163,13 @@ class OpenAICompatDetector:
             "temperature": self._settings.detector_temperature,
         }
 
-        try:
-            response = client.post(
-                f"{base_url}/chat/completions",
-                json=payload,
-                headers=self._headers(),
-            )
-            response.raise_for_status()
-            body = response.json()
-        except httpx.HTTPError as exc:
-            logger.warning("OpenAI-compat detector: request failed: %s", exc)
-            return []
-        except (ValueError, json.JSONDecodeError) as exc:
-            # Non-JSON body from a misbehaving endpoint.
-            logger.warning("OpenAI-compat detector: response body was not JSON: %s", exc)
+        body = self._request_json(
+            client,
+            f"{base_url}/chat/completions",
+            payload,
+            self._headers(),
+        )
+        if body is None:
             return []
 
         raw = _extract_candidates(body)
@@ -178,6 +183,61 @@ class OpenAICompatDetector:
 
         ranked = postprocess(candidates, list(transcript.segments), source_duration)
         return ranked[:max_clips]
+
+    def _request_json(
+        self,
+        client: _PostClient,
+        url: str,
+        payload: dict[str, Any],
+        headers: Mapping[str, str],
+    ) -> dict[str, Any] | None:
+        """POST ``payload`` and return the parsed JSON body, or ``None`` on failure.
+
+        Retries transient failures up to ``_MAX_ATTEMPTS`` times with exponential
+        backoff (``_RETRY_BACKOFF_SECONDS`` * 2**(attempt-1)): a retryable status
+        (429/5xx — free-tier throttle, gateway codes) or a transport error
+        (timeout/connect). A non-retryable status (e.g. a 4xx client error) and a
+        non-JSON body both fail immediately without a retry. Every exit path logs;
+        ``None`` signals the caller to return ``[]``.
+        """
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            try:
+                response = client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as exc:
+                status = exc.response.status_code
+                if status in _RETRY_STATUSES and attempt < _MAX_ATTEMPTS:
+                    logger.warning(
+                        "OpenAI-compat detector: status %s (attempt %d/%d); retrying.",
+                        status,
+                        attempt,
+                        _MAX_ATTEMPTS,
+                    )
+                    time.sleep(_RETRY_BACKOFF_SECONDS * 2 ** (attempt - 1))
+                    continue
+                logger.warning("OpenAI-compat detector: request failed: %s", exc)
+                return None
+            except httpx.HTTPError as exc:
+                # Transport error (timeout/connect/read): retry while attempts remain.
+                if attempt < _MAX_ATTEMPTS:
+                    logger.warning(
+                        "OpenAI-compat detector: transport error (attempt %d/%d): %s; retrying.",
+                        attempt,
+                        _MAX_ATTEMPTS,
+                        exc,
+                    )
+                    time.sleep(_RETRY_BACKOFF_SECONDS * 2 ** (attempt - 1))
+                    continue
+                logger.warning("OpenAI-compat detector: request failed: %s", exc)
+                return None
+            except (ValueError, json.JSONDecodeError) as exc:
+                # Non-JSON body from a misbehaving endpoint — not worth retrying.
+                logger.warning("OpenAI-compat detector: response body was not JSON: %s", exc)
+                return None
+        # Unreachable: the loop always returns/continues, and the final attempt
+        # cannot `continue`. Present so every path has an explicit value.
+        return None
 
 
 def _first_message(body: object) -> dict[str, Any] | None:
