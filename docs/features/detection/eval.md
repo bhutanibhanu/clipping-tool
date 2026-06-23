@@ -112,4 +112,17 @@ gate verdict for a row is PASS when `postable /5` ≥ 3, otherwise REVISE.
 | date | prompt_version | provider/model | source (duration) | postable /5 | verdict | notes |
 | ---- | -------------- | -------------- | ----------------- | ----------- | ------- | ----- |
 | 2026-06-22 | detect-v1 | openai-compat / qwen2.5:7b | synthetic demo (214 s) | n/a — dev sketch | DEV-SKETCH | Free Ollama plumbing validated end-to-end via `clipper detect --eval`: 5 candidates, correctly surfaced the hook / "one more email" insight / productivity hot-take / emotional beat over the filler. 7B time precision imperfect (hot-take start landed one segment late) — expected for a small local model; **not a gate verdict.** The real gate is `--provider claude` on a real ~1-hr Air-ingested transcript. |
-|      |                |                |                   |             |         |       |
+| 2026-06-23 | detect-v1 | openai-compat / gemini-2.5-flash | synthetic "easy" (214s, planted gems) | 4/5 postable | DEV-SKETCH | Found the 4 strong moments (emotional beat, quit/email hook, "one more email" insight, productivity hot-take) with accurate snapped times; correctly scored the filler "technical difficulties" low (0.60). Frontier PROXY, not Opus. |
+| 2026-06-23 | detect-v1 | openai-compat / gemini-2.5-flash | synthetic "hard" (610s, subtle + bait) | 5/5 real gems | DEV-SKETCH | Surfaced 5 subtle buried gems (consistency/"two sentences", discipline-is-small, feedback-vs-hug, burnout-isn't-cinematic, measuring a good day); correctly REJECTED a planted generic time-blocking "tip" + all filler/sponsor/logistics. Frontier PROXY, not Opus. |
+
+The two `gemini-2.5-flash` rows above were run for **free** via Google AI Studio's
+OpenAI-compatible endpoint (`https://generativelanguage.googleapis.com/v1beta/openai`,
+`--provider openai-compat`) — a frontier-model **proxy** that exercises the real
+detection path at zero cost on the build machine. `gemini-2.0-flash` /
+`gemini-flash-latest` were **503-throttled** on the free tier while
+`gemini-2.5-flash` had capacity (which is exactly what motivated the new
+transient-status retry in `OpenAICompatDetector`). These results **de-risk the
+bet** — a frontier model surfaces the planted gems and rejects the bait on both an
+easy and a deliberately hard synthetic transcript — **but they do NOT replace
+T6**: the official gate is still `claude-opus-4-8` on a real ~1-hr authorized
+transcript ingested on the 8 GB Air.
