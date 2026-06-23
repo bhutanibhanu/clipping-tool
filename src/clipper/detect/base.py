@@ -15,6 +15,15 @@ from pydantic import BaseModel, Field
 from clipper.transcribe.base import Transcript
 
 
+class DetectorConfigError(RuntimeError):
+    """A detector is misconfigured (e.g. a required API key is missing).
+
+    Raised in place of a raw provider/SDK exception so callers get a clear,
+    provider-agnostic error at the `Detector` seam — distinct from the
+    "model returned nothing usable" case, which returns ``[]`` instead.
+    """
+
+
 class CandidateClip(BaseModel):
     """One detected moment, ready for rendering and operator review."""
 

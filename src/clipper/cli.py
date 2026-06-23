@@ -16,8 +16,23 @@ import typer
 from clipper import __version__
 from clipper.catalog import SourceFileNotFoundError, create_creator, register_source
 from clipper.config import get_settings
-from clipper.db.models import JobStatus
+from clipper.db.models import Clip, JobStatus
 from clipper.db.session import session_scope
+from clipper.detect.base import DetectorConfigError
+from clipper.detect.eval import format_eval_report
+from clipper.detect.prompt import PROMPT_VERSION
+from clipper.detect.service import (
+    PROVIDER_CLAUDE,
+    PROVIDER_MOCK,
+    PROVIDER_OPENAI_COMPAT,
+    TranscriptMissingError,
+    detect_candidates_for_source,
+    detect_for_source,
+    make_detector,
+)
+from clipper.detect.service import (
+    SourceNotFoundError as DetectSourceNotFoundError,
+)
 from clipper.media.ffmpeg import ffmpeg_available
 from clipper.permissions.service import (
     AuthorizationFileNotFoundError,
@@ -153,6 +168,113 @@ def ingest(
 
     typer.echo(f"Ingested source {source_id} (duration={duration}s)")
     typer.echo(f"  transcript: {transcript_path}")
+
+
+def _mmss(seconds: float) -> str:
+    """Render seconds as ``mm:ss`` for the detect summary."""
+    total = int(seconds)
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def _model_for_provider(provider: str) -> str:
+    """Resolve the model string to show in the eval header for ``provider``.
+
+    Claude → ``Settings.detector_model``, openai-compat → ``Settings.openai_model``,
+    mock → the literal ``"mock"`` (it has no model). Keeps the eval report
+    attributable to the exact model that produced it.
+    """
+    if provider == PROVIDER_CLAUDE:
+        return get_settings().detector_model
+    if provider == PROVIDER_OPENAI_COMPAT:
+        return get_settings().openai_model
+    return "mock"
+
+
+@app.command()
+def detect(
+    source_id: int = typer.Argument(..., help="Id of the ingested source to detect clips in."),
+    provider: str = typer.Option(
+        PROVIDER_CLAUDE,
+        "--provider",
+        help="Detection provider: claude, openai-compat, or mock.",
+    ),
+    mock: bool = typer.Option(
+        False, "--mock", help="Shortcut for --provider mock (offline, no API key)."
+    ),
+    max_clips: int | None = typer.Option(
+        None,
+        "--max-clips",
+        help="Max candidate clips to surface (default: Settings.detector_max_clips).",
+    ),
+    eval_mode: bool = typer.Option(
+        False,
+        "--eval",
+        help="Print a scannable rubric report for the go/no-go gate and persist NOTHING.",
+    ),
+) -> None:
+    """Detect clip-worthy moments in a source and persist them as pending clips.
+
+    Loads the source's transcript, runs the selected detector (Claude by
+    default; ``--mock`` / ``--provider`` switch it), and writes one pending
+    ``Clip`` row per ranked candidate with a locally derived transcript excerpt.
+    Refuses (exit 1) if the source is unknown or has no transcript, or if the
+    detector is misconfigured (e.g. ``ANTHROPIC_API_KEY`` unset).
+
+    With ``--eval`` it runs the same detection but **persists nothing** and
+    instead prints a human-scannable report (timecode, score, Core-4 reason,
+    title, derived excerpt) tagged with the provider/model/``PROMPT_VERSION`` —
+    the build side of the Phase-2 go/no-go gate. Repeated prompt-iteration eval
+    runs therefore never accumulate pending clips. See
+    ``docs/features/detection/eval.md``.
+    """
+    selected = PROVIDER_MOCK if mock else provider
+    try:
+        detector = make_detector(selected)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    if eval_mode:
+        try:
+            with session_scope() as session:
+                # persist=NOTHING: we call the candidates-only helper and never
+                # create Clip rows, so prompt-iteration runs don't pile up.
+                candidates, segments = detect_candidates_for_source(
+                    session, source_id, detector=detector, max_clips=max_clips
+                )
+                report = format_eval_report(
+                    candidates,
+                    segments,
+                    provider=selected,
+                    model=_model_for_provider(selected),
+                    prompt_version=PROMPT_VERSION,
+                    source_id=source_id,
+                )
+        except (DetectSourceNotFoundError, TranscriptMissingError, DetectorConfigError) as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        typer.echo(report)
+        return
+
+    try:
+        with session_scope() as session:
+            clips = detect_for_source(session, source_id, detector=detector, max_clips=max_clips)
+            # Read everything we report INSIDE the session, before it closes.
+            summary = [
+                (c.start_seconds, c.end_seconds, c.score, c.title)
+                for c in clips
+                if isinstance(c, Clip)
+            ]
+    except (DetectSourceNotFoundError, TranscriptMissingError, DetectorConfigError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(
+        f"Detected {len(summary)} candidate clips for source {source_id} (provider={selected}):"
+    )
+    for start, end, score, title in summary:
+        score_str = f"{score:.2f}" if score is not None else "n/a"
+        typer.echo(f"  {_mmss(start)}-{_mmss(end)}  score={score_str}  {title}")
 
 
 def main() -> None:

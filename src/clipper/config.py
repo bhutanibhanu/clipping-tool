@@ -21,6 +21,24 @@ class Settings(BaseSettings):
     # Detection (Phase 2+): Claude behind the Detector protocol.
     detector_model: str = "claude-opus-4-8"
     detector_fallback_model: str = "claude-sonnet-4-6"
+    # Sampling temperature for detection. 0.0 = deterministic eval (ADR-0001 §3).
+    # NOTE: claude-opus-4-7/4.8 (and Fable) REJECT the `temperature` param with a
+    # 400, so the Claude provider only forwards it when > 0; at the 0.0 default it
+    # is omitted (the prompt, not a sampling knob, carries determinism there). The
+    # value still applies to OpenAI-compatible/local providers (T3B).
+    detector_temperature: float = 0.0
+    # Default number of candidate clips to surface per source (the eval gate's
+    # "top 5"); CLI `--max-clips` overrides it.
+    detector_max_clips: int = 5
+
+    # OpenAI-compatible detection provider (T3B): a free local/dev path that
+    # targets any `/chat/completions` endpoint. Defaults point at Ollama's
+    # OpenAI-compatible server (free, no key); a keyed cloud endpoint works too.
+    # This is a dev/test convenience on the build Pro only — NOT the production
+    # path (production stays cloud-Claude on the 8 GB Air). See ADR-0001 §7.
+    openai_base_url: str = "http://localhost:11434/v1"  # Ollama's OpenAI-compat endpoint.
+    openai_model: str = "qwen2.5:7b"  # A tool-calling-capable local model, pre-pulled here.
+    openai_api_key: str = ""  # Empty = no auth (fine for Ollama); env CLIPPER_OPENAI_API_KEY.
 
     # Transcription (Phase 1+): faster-whisper, CPU-only on Mac.
     # `small` is the accuracy floor that fits the 8 GB Air; bump on the Pro.
